@@ -3,7 +3,7 @@ package com.example.businesscard.ui.kinu
 /**
  * Kinu の AGSL シェーダーの本文(RuntimeShader で使う)。
  *
- * gen.py が生成。手で編集しない。元は docs/kinu/tools/src/*.agsl。
+ * gen.py が生成。手で編集しない。元は docs/kinu/tools/src/ の .agsl。
  * 書き直すときは python3 docs/kinu/tools/gen.py を実行する。
  */
 internal object KinuShaders {
