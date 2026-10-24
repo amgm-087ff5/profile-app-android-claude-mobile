@@ -229,11 +229,11 @@ half4 main(float2 p) {
     float h0 = rockH(q, dp, seed);
     float hx = rockH(q + float2(e, 0.0), dp, seed);
     float hy = rockH(q + float2(0.0, e), dp, seed);
-    float3 n = normalize(float3((h0 - hx) * 2.6, (h0 - hy) * 2.6, 1.0));
+    float3 n = normalize(float3((h0 - hx) * 4.0, (h0 - hy) * 4.0, 1.0));
     // 大きな溝(割れ目)
     float crack = fbm(q / (160.0 * dp) + 31.0);
     float groove = 0.12 + 0.88 * smoothstep(0.0, 0.05, abs(crack - 0.5) + (vnoise(q / (2.0 * dp)) - 0.5) * 0.02);
-    float ao = clamp(0.35 + 0.9 * h0, 0.0, 1.0) * groove;
+    float ao = clamp(0.2 + 1.1 * h0, 0.0, 1.0) * groove;
     float tint = fbm(q / (120.0 * dp) + 9.0);
     col = wetRock(n, h0, ao, tint, 1.3);
 
@@ -247,6 +247,9 @@ half4 main(float2 p) {
 
     // ---- 苔の群れ ----
     float m = mossField(p, uv);
+    // 盛り上がった苔の群れは、すぐ下の岩に影を落とす(光は上から)
+    float mUp = mossField(p - float2(0.0, 7.0 * dp), (p - float2(0.0, 7.0 * dp)) / size);
+    col *= 1.0 - 0.6 * smoothstep(0.42, 0.6, mUp) * (1.0 - smoothstep(0.36, 0.5, m));
     if (m > 0.3) {
         float mE = 4.0 * dp;
         float mx = mossField(p + float2(mE, 0.0), (p + float2(mE, 0.0)) / size);
@@ -260,7 +263,7 @@ half4 main(float2 p) {
         float cx = granules(cq + float2(cE, 0.0) / (24.0 * dp));
         float cy = granules(cq + float2(0.0, cE) / (24.0 * dp));
         float3 mn = normalize(float3((m - mx) * 7.0 + (c0 - cx) * 2.2, (m - my) * 7.0 + (c0 - cy) * 2.2, 1.0));
-        float lam = clamp(max(dot(mn, normalize(float3(0.0, -0.6, 0.8))), 0.0) * (0.35 + 0.45 * c0) + 0.1 * dome, 0.0, 1.0);
+        float lam = clamp(max(dot(mn, normalize(float3(0.0, -0.6, 0.8))), 0.0) * (0.25 + 0.6 * c0) + 0.08 * dome, 0.0, 1.0);
         // 群れの縁では株がまばらに(岩の上に小さな株が点在)
         float density = smoothstep(0.38, 0.58, m);
         float4 mc = mossColor(p, dp, seed, lam, density, mix(0.7, 1.0, dome));
@@ -305,58 +308,82 @@ half4 main(float2 p) {
 """
 
     const val MOSS = COMMON + """
-// ---- MOSS: 苔のクッション(主ボタン・選択中)。星形の株が何層にも重なった、ふかふかの苔 ----
+// ---- MOSS: 苔のクッション(主ボタン・選択中)。星形の株が何層にも重なった、ふかふかで厚みのある苔 ----
+// 部品の範囲(0..size)が上面。その下に厚み(thick)の側面があり、株が縁から垂れ下がる。まわりの岩に接地の暗がりを落とす。
 uniform float2 size;
 uniform float dp;
 uniform float seed;
 uniform float radius;
 uniform float pad;
 uniform float press;
+uniform float thick;
 
-// クッションの高さ(px)。縁から内側へ盛り上がるドームに、株の塊の凹凸を足す
+// 上面の高さ(px)。縁から内側へ大きく盛り上がるドームに、株の塊の凹凸を足す
 float cushionH(float2 p) {
     float d = -sdRoundRect(p, size, radius);
-    float s = clamp(d / (12.0 * dp), 0.0, 1.0);
+    float s = clamp(d / (16.0 * dp), 0.0, 1.0);
     float dome = 1.0 - (1.0 - s) * (1.0 - s);
     float clump = fbm(p / (16.0 * dp) + seed * 3.0 + 5.0);
-    return dome * 9.0 * dp + clump * 7.0 * dp * (1.0 - 0.5 * press);
+    return dome * 14.0 * dp * (1.0 - 0.4 * press) + clump * 7.0 * dp * (1.0 - 0.5 * press);
 }
 
-half4 main(float2 p) {
-    float d0 = sdRoundRect(p, size, radius);
-    // 縁のほつれ: 輪郭を雑音でゆがめる
-    float rag = (vnoise(p / (3.0 * dp) + seed * 13.7) - 0.5) * 3.0 * dp;
-    float body = 1.0 - smoothstep(-1.5 * dp, 0.0, d0 + rag);
+half4 main(float2 pIn) {
+    // 押すと上面が沈む(潰れて減った厚みの分だけ下へ)
+    float sink = thick * 0.6 * press / max(1.0 - 0.6 * press, 0.4);
+    float2 p = pIn - float2(0.0, sink);
 
+    float d0 = sdRoundRect(p, size, radius);
+    float dExt = sdRoundRect(p, float2(size.x, size.y + thick), radius);
+    float rag = (vnoise(p / (3.0 * dp) + seed * 13.7) - 0.5) * 3.0 * dp;
+
+    // ---- 上面 ----
     float e = dp;
     float hx = cushionH(p + float2(e, 0.0)) - cushionH(p - float2(e, 0.0));
     float hy = cushionH(p + float2(0.0, e)) - cushionH(p - float2(0.0, e));
     float3 nrm = normalize(float3(-hx / (2.0 * e), -hy / (2.0 * e), 1.0));
     float lam = max(dot(nrm, normalize(float3(0.0, -0.6, 0.8))), 0.0);
 
-    // 縁の外へ行くほど株はまばらで小さい。pad の端では消える
-    float outside = clamp(d0 / max(pad, 1.0), 0.0, 1.0);
-    float density = 1.0 - outside;
+    // 側面での位置(0 = 上面の縁 .. 1 = 接地)。上面では 0
+    float t = clamp(d0 / max(thick, 1.0), 0.0, 1.0) * step(0.0, d0);
+    float onSide = (1.0 - smoothstep(-0.5, 0.5, dExt)) * smoothstep(-1.0 * dp, 1.0 * dp, d0);
+    // 側面の苔は下を向いて暗い。株は下へ行くほどまばらに垂れる
+    float lamS = mix(lam, 0.18 - 0.12 * t, onSide);
+
+    // 縁の外(側面の外)へ行くほど株はまばらで小さい。pad の端では消える
+    float outside = clamp(dExt / max(pad * 0.6, 1.0), 0.0, 1.0);
+    float density = (1.0 - outside) * mix(1.0, 1.0 - 0.6 * t, onSide);
     float shrink = mix(1.0, 0.6, outside) * mix(1.0, 0.85, press);
-    float4 mc = mossColor(p, dp, seed, lam, density, shrink);
+    float4 mc = mossColor(p, dp, seed, lamS, density, shrink);
     float3 col = mc.rgb;
-    col *= mix(0.72, 1.0, smoothstep(0.0, 10.0 * dp, -d0));
+    // 上面の縁は丸く落ちて暗くなる。側面の下は根元の黒緑
+    col *= mix(0.62, 1.0, smoothstep(0.0, 12.0 * dp, -d0)) * mix(1.0, 0.55, onSide * t);
     col *= 1.0 - 0.15 * press;
 
     // 中央の帯: 模様のコントラストを弱め、明るさを中間に寄せる(黒緑の文字を読みやすく)
     float ay = abs(p.y - size.y * 0.5) / size.y;
     float ax = smoothstep(0.0, 18.0 * dp, min(p.x, size.x - p.x));
-    float wb = (1.0 - smoothstep(0.22, 0.36, ay)) * ax;
-    float3 meanC = mossRamp(0.56) * (1.0 - 0.15 * press);
-    col = mix(col, mix(meanC, col, 0.45), wb * 0.9);
+    float wb = (1.0 - smoothstep(0.22, 0.36, ay)) * ax * (1.0 - onSide);
+    float3 meanC = mossRamp(0.58) * (0.85 + 0.25 * lam) * (1.0 - 0.15 * press);
+    col = mix(col, mix(meanC, col, 0.5), wb * 0.85);
 
+    // 本体(上面+側面)の塗り。輪郭は株の形でほつれる
+    float body = 1.0 - smoothstep(-1.5 * dp, 0.0, dExt + rag);
+    // 側面の奥は根元の黒緑で埋める(株のすき間から岩が見えないように)
+    float3 rootC = mossRamp(0.04) * (1.0 - 0.5 * t);
+    col = mix(rootC, col, max(mc.a, 1.0 - onSide));
     float a = clamp(max(body, mc.a * density), 0.0, 1.0);
-    return half4(half3(clamp(col, 0.0, 1.0) * a), half(a));
+    float3 outC = col * a;
+
+    // ---- 接地の暗がり(岩に落ちる) ----
+    float shade = (1.0 - smoothstep(0.0, 7.0 * dp, dExt)) * step(0.0, dExt) * 0.6 * smoothstep(0.0, 2.0 * dp, thick);
+    a = a + shade * (1.0 - a);
+    return half4(half3(clamp(outC, 0.0, 1.0)), half(clamp(a, 0.0, 1.0)));
 }
 """
 
     const val STONE = COMMON + """
-// ---- STONE: 磨いた濡れ石の板(名刺・副ボタン・入力欄・ダイアログ)。縁に苔が生える ----
+// ---- STONE: 磨いた濡れ石の板(名刺・副ボタン・入力欄・ダイアログ)。厚みのある石で、縁に苔が生える ----
+// 部品の範囲(0..size)が上面。その下に厚み(thick)の側面があり、まわりの岩に接地の暗がりを落とす。
 uniform float2 size;
 uniform float dp;
 uniform float seed;
@@ -365,62 +392,98 @@ uniform float pad;
 uniform float press;
 uniform float sunken;
 uniform float moss;
+uniform float thick;
 
-// 自然石らしく、輪郭を少し波打たせた距離
-float stoneD(float2 p) {
-    float wob = (vnoise(p / (30.0 * dp) + seed * 5.0) - 0.5) * 3.0 * dp;
-    return sdRoundRect(p, size, radius) + wob * (1.0 - sunken);
+// 自然石らしく、輪郭を少し波打たせる量
+float wobble(float2 p) {
+    return (vnoise(float2(p.x, 0.0) / (30.0 * dp) + float2(seed * 5.0, p.y / (30.0 * dp))) - 0.5) * 3.0 * dp * (1.0 - sunken);
 }
 
-// 面の高さ: 縁から 8dp で丸く落ちる面取り(溝なら逆)+ 浅い石肌
-float slabH(float2 p) {
-    float d = -stoneD(p);
-    float s = clamp(d / (8.0 * dp), 0.0, 1.0);
+// 上面の高さ: 縁から 10dp で丸く落ちる面取り(溝なら逆)+ 浅い石肌
+float slabH(float2 p, float d) {
+    float s = clamp(-d / (10.0 * dp), 0.0, 1.0);
     float bevel = sqrt(1.0 - (1.0 - s) * (1.0 - s));
     float dir = mix(1.0, -1.0, sunken);
-    // 磨いた石なので粒は1段で浅く
     float grain = granules(p / (3.6 * dp) + seed * 7.0) * 0.5 + vnoise(p / (20.0 * dp) + seed) * 0.5;
-    return dir * bevel * 6.0 * dp + grain * 0.9 * dp;
+    return dir * bevel * 8.0 * dp + grain * 0.5 * dp;
 }
 
-half4 main(float2 p) {
-    float d0 = stoneD(p);
-    float aa = 1.0 - smoothstep(-0.5, 0.5, d0);
+half4 main(float2 pIn) {
+    // 押すと上面が沈む(減った厚みの分だけ下へ)
+    float sink = thick * 0.6 * press / max(1.0 - 0.6 * press, 0.4);
+    float2 p = pIn - float2(0.0, sink);
+    float w = wobble(p);
+    float d0 = sdRoundRect(p, size, radius) + w;
+    // 上面を下へ厚みの分だけ伸ばした形(上面+側面)
+    float dExt = sdRoundRect(p, float2(size.x, size.y + thick), radius) + w;
 
-    float e = 0.8 * dp;
-    float h0 = slabH(p);
-    float hx = slabH(p + float2(e, 0.0));
-    float hy = slabH(p + float2(0.0, e));
-    float3 n = normalize(float3((h0 - hx) / e, (h0 - hy) / e, 1.0));
-
-    // 中央は文字が読めるよう、明るさの揺らぎを小さく
-    float inner = smoothstep(4.0 * dp, 16.0 * dp, -d0);
-    float r = clamp(h0 / dp - mix(1.0, -1.0, sunken) * 6.0 * clamp(-d0 / (8.0 * dp), 0.0, 1.0), 0.0, 1.0);
-    float3 col = wetRock(n, r, 0.75 + 0.25 * r, 0.45 + 0.3 * fbm(p / (60.0 * dp) + seed), mix(0.75, 0.6, inner));
-    col = mix(col, float3(0.085, 0.078, 0.072) + (col - float3(0.085, 0.078, 0.072)) * 0.45, inner * 0.6);
-
-    // 曇天の空の映り込み: 上側に斜めの柔らかいつや(溝には無い)
+    // ---- 上面 ----
+    float faceA = 1.0 - smoothstep(-0.5, 0.5, d0);
+    float3 face = float3(0.0);
     float2 uv = p / size;
-    float band = smoothstep(0.0, 0.25, uv.y) * (1.0 - smoothstep(0.25, 0.5, uv.y + (uv.x - 0.5) * 0.25));
-    col += float3(0.32, 0.35, 0.37) * band * 0.10 * (1.0 - sunken) * (1.0 - 0.6 * press);
-    // 溝は全体に暗い。押すと少し暗く(沈む)
-    col *= (1.0 - 0.35 * sunken) * (1.0 - 0.08 * press);
+    if (faceA > 0.0) {
+        float e = 0.8 * dp;
+        float h0 = slabH(p, d0);
+        float hx = slabH(p + float2(e, 0.0), sdRoundRect(p + float2(e, 0.0), size, radius) + w);
+        float hy = slabH(p + float2(0.0, e), sdRoundRect(p + float2(0.0, e), size, radius) + w);
+        float3 n = normalize(float3((h0 - hx) / e, (h0 - hy) / e, 1.0));
+        float inner = smoothstep(4.0 * dp, 18.0 * dp, -d0);
+        float r = clamp(0.5 + 0.5 * (vnoise(p / (3.0 * dp) + seed) - 0.5), 0.0, 1.0);
+        face = wetRock(n, 0.75, 0.8 + 0.2 * r, 0.45 + 0.3 * fbm(p / (60.0 * dp) + seed), mix(0.9, 0.6, inner));
+        face = mix(face, float3(0.085, 0.078, 0.072) + (face - float3(0.085, 0.078, 0.072)) * 0.45, inner * 0.6);
+        // 曇天の空の映り込み: 上側に斜めの柔らかいつや(溝には無い)
+        float band = smoothstep(0.0, 0.25, uv.y) * (1.0 - smoothstep(0.25, 0.5, uv.y + (uv.x - 0.5) * 0.25));
+        face += float3(0.32, 0.35, 0.37) * band * 0.10 * (1.0 - sunken) * (1.0 - 0.6 * press);
+        // 溝は、上の縁の内側に深い影
+        float lip = 1.0 - smoothstep(0.0, 9.0 * dp, p.y + 2.0 * dp * (1.0 - smoothstep(0.0, 6.0 * dp, -d0)));
+        face *= (1.0 - 0.35 * sunken) * (1.0 - 0.55 * sunken * lip) * (1.0 - 0.08 * press);
+    }
 
-    float a = aa;
-    // 縁に生える苔: 左上の角と下の辺を中心に、縁の帯の中だけ
-    if (moss > 0.001 && d0 > -18.0 * dp) {
-        float band2 = smoothstep(-16.0 * dp, -4.0 * dp, d0) * (1.0 - smoothstep(0.0, pad * 0.9, d0));
-        float pref = max(max(1.0 - smoothstep(0.0, 0.45, length(uv - float2(0.0, 0.0))), smoothstep(0.75, 1.0, uv.y)),
+    // ---- 側面(厚み) ----
+    float sideA = (1.0 - smoothstep(-0.5, 0.5, dExt)) * step(0.5, thick) * (1.0 - faceA);
+    float3 side = float3(0.0);
+    if (sideA > 0.0) {
+        float t = clamp(d0 / max(thick, 1.0), 0.0, 1.0);    // 0 = 上の縁 .. 1 = 接地
+        // 縦に流れる濡れた筋と、粗い割れ肌
+        float streak = vnoise(float2(p.x / (1.6 * dp), p.y / (9.0 * dp)) + seed * 3.0);
+        float grain = granules(p / (2.6 * dp) + seed * 11.0);
+        float3 base = mix(float3(0.120, 0.110, 0.100), float3(0.030, 0.027, 0.025), smoothstep(0.0, 1.0, t));
+        side = base * (0.75 + 0.35 * grain) * (0.85 + 0.3 * streak);
+        // 上の縁は光を受けて細く光り、接地の近くは真っ黒
+        side += float3(0.55, 0.56, 0.52) * (1.0 - smoothstep(0.0, 0.12, t)) * 0.12;
+        // 濡れた筋の小さなつや
+        side += float3(0.8, 0.8, 0.76) * smoothstep(0.82, 0.95, streak) * smoothstep(0.6, 0.9, grain) * (1.0 - t) * 0.5;
+        side *= 1.0 - 0.6 * smoothstep(0.6, 1.0, t);
+        // 左右の側は少し明るい(上からの光が回る)
+        side *= 0.9 + 0.25 * abs(uv.x - 0.5);
+    }
+
+    float3 col = face * faceA + side * sideA;
+    float a = faceA + sideA;
+
+    // ---- 縁に生える苔(上面の縁と、側面へ垂れる所) ----
+    if (moss > 0.001 && dExt > -18.0 * dp && dExt < pad) {
+        float edgeBand = smoothstep(-16.0 * dp, -4.0 * dp, d0) * (1.0 - smoothstep(0.0, pad * 0.8, dExt));
+        float pref = max(max(1.0 - smoothstep(0.0, 0.45, length(uv)), smoothstep(0.75, 1.0, uv.y)),
                          0.6 * smoothstep(0.85, 1.0, uv.x) * smoothstep(0.4, 0.9, uv.y));
         float f = fbm(p / (26.0 * dp) + seed * 9.0);
-        float m = clamp(band2 * (pref * 1.1 + (f - 0.55) * 1.8) * moss * 1.6, 0.0, 1.0);
-        float lam = 0.55 + 0.35 * (f - 0.5) + 0.25 * smoothstep(-8.0 * dp, 0.0, -d0);
-        float4 mc = mossColor(p, dp, seed + 3.0, clamp(lam, 0.0, 1.0), smoothstep(0.2, 0.7, m), mix(0.65, 0.95, m));
+        float m = clamp(edgeBand * (pref * 1.1 + (f - 0.55) * 1.8) * moss * 1.6, 0.0, 1.0);
+        // 苔は上面より盛り上がり、側面へは垂れ下がって暗くなる
+        float onSide = smoothstep(0.0, 2.0 * dp, d0);
+        float lam = 0.6 + 0.35 * (f - 0.5) + 0.25 * smoothstep(-8.0 * dp, 0.0, -d0) - 0.35 * onSide;
+        float4 mc = mossColor(p, dp, seed + 3.0, clamp(lam, 0.0, 1.0), smoothstep(0.2, 0.7, m), mix(0.65, 1.0, m));
         float mm = mc.a * smoothstep(0.15, 0.5, m);
-        col = mix(col, mc.rgb, mm);
-        a = max(a, mm);
+        float3 mcol = mc.rgb * (1.0 - 0.45 * onSide * clamp(d0 / max(thick, 1.0), 0.0, 1.0));
+        col = col * (1.0 - mm) + mcol * mm;
+        a = a * (1.0 - mm) + mm;
     }
-    return half4(half3(clamp(col, 0.0, 1.0) * a), half(a));
+
+    // ---- 接地の暗がり(岩に落ちる) ----
+    float shade = (1.0 - smoothstep(0.0, 6.0 * dp, dExt)) * step(0.0, dExt) * 0.55 * smoothstep(0.0, 2.0 * dp, thick);
+    col = col;
+    a = a + shade * (1.0 - a);
+
+    return half4(half3(clamp(col, 0.0, 1.0)), half(clamp(a, 0.0, 1.0)));
 }
 """
 }

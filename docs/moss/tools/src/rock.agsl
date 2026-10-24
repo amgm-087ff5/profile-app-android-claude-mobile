@@ -41,11 +41,11 @@ half4 main(float2 p) {
     float h0 = rockH(q, dp, seed);
     float hx = rockH(q + float2(e, 0.0), dp, seed);
     float hy = rockH(q + float2(0.0, e), dp, seed);
-    float3 n = normalize(float3((h0 - hx) * 2.6, (h0 - hy) * 2.6, 1.0));
+    float3 n = normalize(float3((h0 - hx) * 4.0, (h0 - hy) * 4.0, 1.0));
     // 大きな溝(割れ目)
     float crack = fbm(q / (160.0 * dp) + 31.0);
     float groove = 0.12 + 0.88 * smoothstep(0.0, 0.05, abs(crack - 0.5) + (vnoise(q / (2.0 * dp)) - 0.5) * 0.02);
-    float ao = clamp(0.35 + 0.9 * h0, 0.0, 1.0) * groove;
+    float ao = clamp(0.2 + 1.1 * h0, 0.0, 1.0) * groove;
     float tint = fbm(q / (120.0 * dp) + 9.0);
     col = wetRock(n, h0, ao, tint, 1.3);
 
@@ -59,6 +59,9 @@ half4 main(float2 p) {
 
     // ---- 苔の群れ ----
     float m = mossField(p, uv);
+    // 盛り上がった苔の群れは、すぐ下の岩に影を落とす(光は上から)
+    float mUp = mossField(p - float2(0.0, 7.0 * dp), (p - float2(0.0, 7.0 * dp)) / size);
+    col *= 1.0 - 0.6 * smoothstep(0.42, 0.6, mUp) * (1.0 - smoothstep(0.36, 0.5, m));
     if (m > 0.3) {
         float mE = 4.0 * dp;
         float mx = mossField(p + float2(mE, 0.0), (p + float2(mE, 0.0)) / size);
@@ -72,7 +75,7 @@ half4 main(float2 p) {
         float cx = granules(cq + float2(cE, 0.0) / (24.0 * dp));
         float cy = granules(cq + float2(0.0, cE) / (24.0 * dp));
         float3 mn = normalize(float3((m - mx) * 7.0 + (c0 - cx) * 2.2, (m - my) * 7.0 + (c0 - cy) * 2.2, 1.0));
-        float lam = clamp(max(dot(mn, normalize(float3(0.0, -0.6, 0.8))), 0.0) * (0.35 + 0.45 * c0) + 0.1 * dome, 0.0, 1.0);
+        float lam = clamp(max(dot(mn, normalize(float3(0.0, -0.6, 0.8))), 0.0) * (0.25 + 0.6 * c0) + 0.08 * dome, 0.0, 1.0);
         // 群れの縁では株がまばらに(岩の上に小さな株が点在)
         float density = smoothstep(0.38, 0.58, m);
         float4 mc = mossColor(p, dp, seed, lam, density, mix(0.7, 1.0, dome));

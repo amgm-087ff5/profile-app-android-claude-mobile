@@ -121,16 +121,23 @@ fun Modifier.mossSurface(
         val native = Path().apply { addOutline(outline) }.asAndroidPath()
         // 角丸の半径(px)。シェーダーが角の丸みに使う
         val radiusPx = (outline as? Outline.Rounded)?.roundRect?.topLeftCornerRadius?.x ?: 0f
-        val padPx = 6.dp.toPx()
+        val padPx = MossDepth.PAD.toPx()
+        // 板の厚み(px)。彫り込みは 0、苔は石より厚い
+        val thickPx = when {
+            sunken -> MossDepth.FIELD_THICK.toPx()
+            tone == MossTone.Moss -> MossDepth.MOSS_THICK.toPx()
+            else -> MossDepth.STONE_THICK.toPx()
+        }
         // シェーダーは縁の外側へ pad の分まで描くので、その大きさの矩形を塗る
         val fringe = Size(size.width + padPx * 2f, size.height + padPx * 2f)
         val brush = ShaderBrush(shader)
 
         val isMoss = tone == MossTone.Moss
-        val shadowDy = if (isMoss) 3.dp.toPx() else 2.dp.toPx()
-        val shadowAlpha = if (isMoss) 0.6f else 0.5f
+        // 接地の影は、上面の形を厚み分だけ下へずらした位置に落とす
+        val shadowDy = thickPx + 3.dp.toPx()
+        val shadowAlpha = if (isMoss) 0.7f else 0.65f
         val shadowColor = if (isMoss) c.mossShadow else Color.Black
-        val shadowPaint = blurPaint(6.dp.toPx())
+        val shadowPaint = blurPaint(9.dp.toPx())
         val glowWide = blurPaint(18.dp.toPx())
         val glowNear = blurPaint(7.dp.toPx())
 
@@ -153,6 +160,7 @@ fun Modifier.mossSurface(
                     val nc = canvas.nativeCanvas
                     nc.save()
                     nc.translate(0f, shadowDy * lift)
+                    // 影も上面の形を使う(押すと厚みが減り、影のずれも小さくなる)
                     nc.drawPath(native, shadowPaint.tint(shadowColor, shadowAlpha * lift))
                     nc.restore()
                 }
@@ -165,6 +173,7 @@ fun Modifier.mossSurface(
                 seed = seed,
                 radiusPx = radiusPx,
                 padPx = padPx,
+                thickPx = thickPx,
                 press = sink,
                 sunken = sunken,
                 moss = moss,
@@ -176,9 +185,13 @@ fun Modifier.mossSurface(
 
 /** 押し込まれた深さで、中身(文字・アイコン)をわずかに下げる(板と一緒に沈む)。 */
 internal fun Modifier.mossSink(press: MossPress?): Modifier =
-    if (press == null) this else this.graphicsLayer { translationY = 1.dp.toPx() * press.value.coerceIn(0f, 1f) }
+    if (press == null) this else this.graphicsLayer { translationY = 5.dp.toPx() * press.value.coerceIn(0f, 1f) }
 
-/** シェーダーに値を渡す。種類ごとに宣言されている uniform だけを設定する(無い名前を設定すると落ちる)。 */
+/**
+ * シェーダーに値を渡す。種類ごとに宣言されている uniform だけを設定する(無い名前を設定すると落ちる)。
+ * thick は MOSS と STONE の両方に宣言されているので、種類によらず設定する。
+ * 押すと板が沈んで厚みが減って見えるよう、押し込みに応じて thick を 4 割まで縮める。
+ */
 private fun RuntimeShader.setMossUniforms(
     tone: MossTone,
     size: Size,
@@ -186,6 +199,7 @@ private fun RuntimeShader.setMossUniforms(
     seed: Float,
     radiusPx: Float,
     padPx: Float,
+    thickPx: Float,
     press: Float,
     sunken: Boolean,
     moss: Float,
@@ -195,6 +209,7 @@ private fun RuntimeShader.setMossUniforms(
     setFloatUniform("seed", seed)
     setFloatUniform("radius", radiusPx)
     setFloatUniform("pad", padPx)
+    setFloatUniform("thick", thickPx * (1f - 0.6f * press))
     setFloatUniform("press", press)
     if (tone == MossTone.Stone) {
         setFloatUniform("sunken", if (sunken) 1f else 0f)
