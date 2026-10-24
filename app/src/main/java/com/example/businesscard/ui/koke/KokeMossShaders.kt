@@ -30,7 +30,7 @@ uniform float radius;    // 部品の角丸の半径(px)
 uniform float growth;    // 生える途中 0..1(1 = 生えきった)
 uniform float press;     // 押されている強さ 0..1
 uniform float2 touch;    // 指の位置(px)
-uniform float2 view;     // 画面の中での部品の位置(中心 0、端 ±1)。苔を逆向きに少しずらす(高い株ほど大きく)
+uniform float2 view;     // 画面の中での部品の位置(中心 0、端 ±1)。苔を画面の中心から遠ざかる向きに少しずらす(高い株ほど大きく=手前)
 uniform float4 patchA;
 uniform float4 patchB;
 uniform float4 patchC;
@@ -257,7 +257,7 @@ half4 main(float2 pIn) {
     float2 vw = clamp(view, float2(-1.0), float2(1.0));
     // 影は平らな面の上なのでずらさない。群れの上面(高さの中ほど)は 1.2dp ずらす
     float2 pS = pIn;
-    float2 p = pIn + vw * 1.2 * dp;
+    float2 p = pIn - vw * 1.2 * dp;
     float wob = wobble(p);
     float3 F = field(p, wob);
     float q = F.x;
@@ -318,7 +318,7 @@ half4 main(float2 pIn) {
         float4 tB;
         float4 tC;
         // 手前の層(高い株)ほど大きくずらす: 0.8dp(奥)〜 2.6dp(手前、群れの上面の 1.2dp を含む)
-        float2 pL = p + vw * (1.8 * front - 0.4) * dp;
+        float2 pL = p - vw * (1.8 * front - 0.4) * dp;
         tuftLayer(pL, cs, float2(seed * 19.3 + kk * 37.1, seed * 11.7 + kk * 21.9), front, fq, tA, tB, tC);
         // 手前の株が奥へ落とす影(株の間の暗がり)
         col *= 1.0 - 0.42 * tA.w * (1.0 - tA.x);
