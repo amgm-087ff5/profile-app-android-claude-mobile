@@ -65,10 +65,14 @@ float patchQ(float2 p, float4 P, float e, float wob) {
         return 9.0;
     }
     float2 d = p - P.xy;
-    float th = atan(d.y, d.x);
-    float ph = seed * TAU + P.x * 0.013 + P.y * 0.029;
-    float stretch = 1.0 + 0.38 * sin(th + ph) + 0.14 * sin(2.0 * th + 1.7 * ph);
-    float r = length(d) / (P.z * stretch);
+    float ld = max(length(d), 0.001);
+    float2 u = d / ld;
+    // 向き u による伸び(角度を求めずに、向きと種の向きとの内積で作る)
+    float2 a1 = float2(fract(seed * 7.13 + P.x * 0.0137), fract(seed * 3.31 + P.y * 0.0291)) * 2.0 - 1.0;
+    float2 a2 = float2(fract(seed * 5.71 + P.y * 0.0173), fract(seed * 9.17 + P.x * 0.0219)) * 2.0 - 1.0;
+    float2 u2 = float2(u.x * u.x - u.y * u.y, 2.0 * u.x * u.y);
+    float stretch = max(1.0 + 0.30 * dot(u, a1) + 0.12 * dot(u2.yx, a2), 0.5);
+    float r = ld / (P.z * stretch);
     float inw = max(-e, 0.0) / (max(P.w, 1.0) * (1.0 + 0.9 * clamp(1.0 - r, 0.0, 1.0)));
     // はみ出しは群れの中ほどで大きく、端ほど小さい(垂れた房)
     float ov = 10.0 * dp * (0.35 + 0.65 * clamp(1.0 - r * r, 0.0, 1.0));
@@ -126,7 +130,8 @@ float wobble(float2 p) {
 // tA = (被覆, 株の中の位置 0 根元..1 先端, 株の乱数, 下の層へ落とす影)
 // tB = (葉の向き x, y, 葉の中心線への近さ, 株の沈み)
 // tC = (水滴の被覆, 水滴の中での位置 x, y, 株の明るさの倍率)
-void tuftLayer(float2 p, float cs, float2 sd, float front, out float4 tA, out float4 tB, out float4 tC) {
+// fq = (この画素での群れの場 q(細かいゆらぎ無し), q の傾き x, y)。株の根元での q はここから見積もる(場を何度も計算しない)
+void tuftLayer(float2 p, float cs, float2 sd, float front, float3 fq, out float4 tA, out float4 tB, out float4 tC) {
     float2 q = p / cs;
     float2 cell0 = floor(q);
     float bestS = 0.0;
@@ -144,13 +149,17 @@ void tuftLayer(float2 p, float cs, float2 sd, float front, out float4 tA, out fl
             float2 ctr = cell + 0.5 + (hash22(key + 3.7) - 0.5) * 0.95;
             float2 cpx = ctr * cs;
             // 株の根元での群れの場(大きさ・残すか・生える時刻を決める)
-            float qc = field(cpx, 0.7 * wobble(cpx)).x;
+            // (画素での q と傾きから見積もり、大きなゆらぎ 1 段だけ足す)
+            float qc = max(fq.x + dot(fq.yz, cpx - p), 0.0) * (1.0 + 0.32 * (vnoise(cpx / (6.5 * dp) + seed * 17.0) - 0.5));
             // 奥の層は群れの中ほどに詰まり、手前の層は縁寄り(はみ出しまで、まばらにほつれる)
             float lo = mix(0.86, 1.10, front);
             // 塊の上には手前の大きな株が多く、塊の間(谷)には奥の小さな株だけ
-            float clc = clumps(cpx);
+            float clc = front > 0.0 ? clumps(cpx) : 0.0;
             float keepP = (1.0 - smoothstep(lo - 0.22, lo, qc)) * mix(1.0, max(smoothstep(0.0, 0.6, qc) * 0.6, clc) * 0.75 + 0.25, front);
             float keep = step(fract(rnd * 3.91 + 0.17), keepP);
+            if (keep < 0.5) {
+                continue;
+            }
             // 生える: 芯から縁へ、少しずつずれて伸びる
             float gt = clamp((growth - 0.42 * min(qc, 1.0) - 0.16 * fract(rnd * 7.7)) / 0.42, 0.0, 1.0);
             gt = gt * gt * (3.0 - 2.0 * gt);
@@ -189,7 +198,7 @@ void tuftLayer(float2 p, float cs, float2 sd, float front, out float4 tA, out fl
             // 葉が一部欠けた株(全部の向きに同じ葉が揃わない)
             leaf *= step(0.12, hash21(float2(li + 3.0, rnd * 37.0)));
             float core = 1.0 - smoothstep(0.10, 0.30, ur);
-            float cov = max(leaf, core * 0.85) * keep * step(0.001, gt);
+            float cov = max(leaf, core * 0.85) * step(0.001, gt);
             float prio = qc + 0.25 * rnd + front;
             float s = cov * (0.35 + prio);
             if (s > bestS) {
@@ -201,10 +210,10 @@ void tuftLayer(float2 p, float cs, float2 sd, float front, out float4 tA, out fl
             }
             // 株の落とす影(右下へずれた柔らかい円)。下の層の上に落ちる
             float2 sv = v - float2(0.35, 0.45) * R;
-            float sh = (1.0 - smoothstep(0.35 * R, 1.15 * R, length(sv))) * keep * gt;
+            float sh = (1.0 - smoothstep(0.35 * R, 1.15 * R, length(sv))) * gt;
             shadow = max(shadow, sh);
             // 水滴: 一部の株の葉先に、小さな玉
-            if (fract(rnd * 29.3) > 0.74 && keep > 0.5) {
+            if (fract(rnd * 29.3) > 0.74) {
                 float da = fract(rnd * 7.31) * P + floor(fract(rnd * 3.3) * n) * P;
                 float2 dpos = float2(cos(da), sin(da)) * R * 0.74 + lean;
                 float rd = (0.45 + 0.40 * fract(rnd * 53.1)) * dp * gt;
@@ -233,9 +242,9 @@ half4 main(float2 p) {
     float qs = field(p - float2(2.4, 3.2) * dp, wob * 0.5).x;
     float qt = field(p - float2(0.6, 0.9) * dp, wob).x;
     float gAll = smoothstep(0.45, 1.0, growth);
-    float shadowA = (1.0 - smoothstep(0.55, 0.92, qs)) * 0.30 * gAll;
+    float shadowA = (1.0 - smoothstep(0.50, 0.84, qs)) * 0.30 * gAll;
     // 接地の暗がり: 縁ぎりぎり、わずかに右下
-    float contact = (1.0 - smoothstep(0.70, 0.86, qt)) * 0.40 * gAll;
+    float contact = (1.0 - smoothstep(0.60, 0.76, qt)) * 0.40 * gAll;
     float under = clamp(max(shadowA, contact), 0.0, 1.0);
     if (q > 1.25) {
         return half4(0.0, 0.0, 0.0, half(under));
@@ -250,6 +259,10 @@ half4 main(float2 p) {
     float3 L = normalize(float3(-0.55, -0.65, 0.62));
     float lamC = clamp(dot(nC, L), 0.0, 1.0);
     float cl = clumps(p);
+    // 株の根元の q を見積もるための、ゆらぎ無しの場とその傾き
+    float eg = 2.0 * dp;
+    float q0 = field(p, 0.0).x;
+    float3 fq = float3(q0, (field(p + float2(eg, 0.0), 0.0).x - q0) / eg, (field(p + float2(0.0, eg), 0.0).x - q0) / eg);
     // 塊の間の谷ほど暗い(株の奥まで光が届かない)
     float valley = mix(0.70, 1.08, cl);
 
@@ -257,7 +270,7 @@ half4 main(float2 p) {
     float3 col = mossRamp(0.03 + 0.08 * lamC) * (0.50 + 0.40 * lamC) * valley;
     float gBase = clamp((growth - 0.42 * min(q, 1.0) - 0.08) / 0.42, 0.0, 1.0);
     // 縁は細かい雑音で切り、半透明のにじみを作らない。生えかけ(gBase が小さい)では埋めない
-    float baseCut = 0.74 + 0.10 * (vnoise(p / (1.3 * dp) + seed * 5.0) - 0.5);
+    float baseCut = 0.66 + 0.10 * (vnoise(p / (1.3 * dp) + seed * 5.0) - 0.5);
     float alpha = (1.0 - smoothstep(baseCut - 0.025, baseCut, q)) * smoothstep(0.75, 1.0, gBase);
 
     float3 V = float3(0.0, 0.0, 1.0);
@@ -272,10 +285,14 @@ half4 main(float2 p) {
         float front = kk / 3.0;
         // 奥は小さく詰まり(2.6dp)、手前は大きい(6.2dp)
         float cs = (2.6 + 1.2 * kk) * dp;
+        // この層の株が届かない所(奥の層は群れの中ほどだけ)は飛ばす
+        if (q > mix(0.86, 1.10, front) + 0.22) {
+            continue;
+        }
         float4 tA;
         float4 tB;
         float4 tC;
-        tuftLayer(p, cs, float2(seed * 19.3 + kk * 37.1, seed * 11.7 + kk * 21.9), front, tA, tB, tC);
+        tuftLayer(p, cs, float2(seed * 19.3 + kk * 37.1, seed * 11.7 + kk * 21.9), front, fq, tA, tB, tC);
         // 手前の株が奥へ落とす影(株の間の暗がり)
         col *= 1.0 - 0.42 * tA.w * (1.0 - tA.x);
         float ur = tA.y;
