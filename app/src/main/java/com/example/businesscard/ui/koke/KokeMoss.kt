@@ -78,6 +78,9 @@ private val ReleaseSpring = spring<Float>(dampingRatio = 0.42f, stiffness = 260f
  * 止まっているときは描き直さない(アニメーションの値は描くときにだけ読む)。
  * 触覚は付けない(部品の側で行う)。「アニメーションを削除」設定では最初から生えている。
  *
+ * [view] を渡すと、画面の中の位置と逆向きに苔を少しずらす(手前の高い株ほど大きく、最大 2.6dp)。
+ * 苔が岩の面より手前にあるように見える。影は面の上なのでずらさない。値は描くときに読む。
+ *
  * @param patches 群れ(最大 4 つ。それより多い分は描かない)
  * @param seed 生え方の種。部品ごとに違う値にすると、同じ形が並ばない
  */
@@ -87,6 +90,7 @@ fun Modifier.kokeMoss(
     shape: Shape,
     seed: Int,
     interactionSource: InteractionSource? = null,
+    view: KokeViewOffset? = null,
 ): Modifier {
     if (patches.isEmpty()) return this
     val context = LocalContext.current
@@ -149,6 +153,8 @@ fun Modifier.kokeMoss(
             // 離した後のばねの弾みで少し負(株がふくらむ)になってよい
             shader.setFloatUniform("press", press.value.coerceIn(-0.2f, 1f))
             shader.setFloatUniform("touch", touch.x, touch.y)
+            val v = view?.value ?: Offset.Zero
+            shader.setFloatUniform("view", v.x, v.y)
             drawRect(brush = brush, topLeft = area.topLeft, size = area.size)
         }
     }

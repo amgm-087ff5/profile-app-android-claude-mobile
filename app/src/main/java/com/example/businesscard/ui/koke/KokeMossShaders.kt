@@ -5,11 +5,11 @@ package com.example.businesscard.ui.koke
  *
  *  - MOSS: 平らな部品の一部に生える、立体的な苔の群れ。細い葉が星形に開いた株を4層、奥(群れの中央、小さく詰まる)から
  *    手前(縁と塊の上、大きく不揃い)へ重ねる。群れの中に小さな盛り上がり(塊)がある。左上からの光で株ごとに陰影を付け、株の間の暗がり、群れの縁の透ける黄緑のふち、
- *    葉先の水滴のきらめき、右下へ落ちる柔らかい影と接地の暗がりを描く。
+ *    葉先の水滴のきらめき、右下へ落ちる柔らかい影と接地の暗がり(黒い岩の上なので控えめ)を描く。
  *    押すと指の近くの株が沈んで外へ倒れ、growth(0..1)で根元から生える。
  *
  * uniform: size(部品の大きさ px), dp(1dp の px 数), seed(0..1), radius(角丸の半径 px), growth, press,
- * touch(指の位置 px), patchA..patchD(群れ = 縁の上の基準点 x, y, 縁に沿った広がり, 内側への深さ。使わない群れは 0),
+ * touch(指の位置 px), view(画面の中の位置 -1..1。苔を逆向きに最大 2.6dp ずらす), patchA..patchD(群れ = 縁の上の基準点 x, y, 縁に沿った広がり, 内側への深さ。使わない群れは 0),
  * patchH(各群れの高さ px)。返す色は premultiplied。
  * 宣言した uniform はすべて使う(使われずに消えると設定時に落ちる)。
  *
@@ -30,6 +30,7 @@ uniform float radius;    // 部品の角丸の半径(px)
 uniform float growth;    // 生える途中 0..1(1 = 生えきった)
 uniform float press;     // 押されている強さ 0..1
 uniform float2 touch;    // 指の位置(px)
+uniform float2 view;     // 画面の中での部品の位置(中心 0、端 ±1)。苔を逆向きに少しずらす(高い株ほど大きく)
 uniform float4 patchA;
 uniform float4 patchB;
 uniform float4 patchC;
@@ -251,19 +252,24 @@ void tuftLayer(float2 p, float cs, float2 sd, float front, float3 fq, out float4
     tC.yz = dropV;
 }
 
-half4 main(float2 p) {
+half4 main(float2 pIn) {
+    // 見る向き: 画面の端にある部品ほど、苔が中心側へずれる(高い所ほど大きく = 手前にある)
+    float2 vw = clamp(view, float2(-1.0), float2(1.0));
+    // 影は平らな面の上なのでずらさない。群れの上面(高さの中ほど)は 1.2dp ずらす
+    float2 pS = pIn;
+    float2 p = pIn + vw * 1.2 * dp;
     float wob = wobble(p);
     float3 F = field(p, wob);
     float q = F.x;
 
     // ---- 平らな面に落ちる影: 群れの密な所を右下へずらしたもの。左・上には出ない ----
     // 影の形は密な芯(q < 0.85)だけなので、ずらした分だけ右下に覗く
-    float qs = field(p - float2(2.4, 3.2) * dp, wob * 0.5).x;
-    float qt = field(p - float2(0.6, 0.9) * dp, wob).x;
+    float qs = field(pS - float2(2.4, 3.2) * dp, wob * 0.5).x;
+    float qt = field(pS - float2(0.6, 0.9) * dp, wob).x;
     float gAll = smoothstep(0.45, 1.0, growth);
-    float shadowA = (1.0 - smoothstep(0.50, 0.84, qs)) * 0.30 * gAll;
+    float shadowA = (1.0 - smoothstep(0.50, 0.84, qs)) * 0.24 * gAll;
     // 接地の暗がり: 縁ぎりぎり、わずかに右下
-    float contact = (1.0 - smoothstep(0.60, 0.76, qt)) * 0.40 * gAll;
+    float contact = (1.0 - smoothstep(0.62, 0.76, qt)) * 0.34 * gAll;
     float under = clamp(max(shadowA, contact), 0.0, 1.0);
     if (q > 1.25) {
         return half4(0.0, 0.0, 0.0, half(under));
@@ -311,7 +317,9 @@ half4 main(float2 p) {
         float4 tA;
         float4 tB;
         float4 tC;
-        tuftLayer(p, cs, float2(seed * 19.3 + kk * 37.1, seed * 11.7 + kk * 21.9), front, fq, tA, tB, tC);
+        // 手前の層(高い株)ほど大きくずらす: 0.8dp(奥)〜 2.6dp(手前、群れの上面の 1.2dp を含む)
+        float2 pL = p + vw * (1.8 * front - 0.4) * dp;
+        tuftLayer(pL, cs, float2(seed * 19.3 + kk * 37.1, seed * 11.7 + kk * 21.9), front, fq, tA, tB, tC);
         // 手前の株が奥へ落とす影(株の間の暗がり)
         col *= 1.0 - 0.42 * tA.w * (1.0 - tA.x);
         float ur = tA.y;
@@ -331,7 +339,9 @@ half4 main(float2 p) {
         lc += float3(0.55, 0.62, 0.40) * spec * 0.22;
         // 群れの縁の葉先は光が透けて黄緑に光る(逆光ぎみ)
         float rim = smoothstep(0.55, 1.0, q) * pow(ur, 2.0);
-        lc += float3(0.50, 0.66, 0.10) * rim * 0.55 * (0.5 + 0.5 * dif);
+        lc += float3(0.55, 0.72, 0.12) * rim * 0.80 * (0.45 + 0.55 * dif);
+        // 曇り空の映り込み(葉先が少し白っぽく、黒い岩の上で輪郭が立つ)
+        lc += float3(0.10, 0.12, 0.11) * pow(ur, 3.0) * (0.4 + 0.6 * nC.z) * front;
         // 押されて沈んだ株は暗い
         lc *= 1.0 - 0.5 * tB.w;
         col = mix(col, lc, tA.x);
