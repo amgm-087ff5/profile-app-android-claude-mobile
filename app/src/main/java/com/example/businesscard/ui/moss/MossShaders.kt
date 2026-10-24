@@ -71,15 +71,17 @@ float sdRoundRect(float2 p, float2 b, float r) {
     return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - r;
 }
 
-// 株の1本ぶんの濃さ(0..1)。r は株の中心からの距離(株の半径 = 1)、a は角度。
-// 葉は 6〜9 本。細い葉(spike)と、根元の詰まった芯(core)を足す
-float tuftStar(float r, float a, float rnd) {
+// 株の1本ぶんの値。x = 濃さ(0..1)、y = 明るさ(葉の先ほど明るい、0..1)
+// r は株の中心からの距離(株の半径 = 1)、a は角度。葉は 6〜9 本。細い葉(spike)と、根元の詰まった芯(core)を足す
+float2 tuftStar(float r, float a, float rnd) {
     float n = 6.0 + floor(rnd * 4.0);
     float ph = fract(rnd * 7.31) * 6.2832;
     float lobe = 0.5 + 0.5 * cos(n * a + ph);
-    float spike = pow(lobe, 8.0) * smoothstep(1.0, 0.3, r);
-    float core = smoothstep(0.6, 0.2, r);
-    return max(core * 0.9, spike);
+    float spike = pow(lobe, 6.0) * (1.0 - smoothstep(0.3, 1.0, r));
+    float core = 1.0 - smoothstep(0.2, 0.6, r);
+    float dens = max(core * 0.9, spike);
+    float bright = max(core * 0.25, spike * (0.35 + 0.65 * smoothstep(0.2, 0.9, r)));
+    return float2(dens, bright);
 }
 
 // 株の色。tip は中心からの位置(0 = 根元、1 = 先端)。先端が明るい黄緑、根元は黒緑
@@ -88,9 +90,9 @@ float3 leafColor(float tip, float rnd) {
     float3 shadow = float3(0.09, 0.22, 0.04);
     float3 mid = float3(0.30, 0.58, 0.11);
     float3 bright = float3(0.74, 0.93, 0.30);
-    float3 c = mix(root, shadow, smoothstep(0.0, 0.35, tip));
-    c = mix(c, mid, smoothstep(0.3, 0.7, tip));
-    c = mix(c, bright, smoothstep(0.7, 1.0, tip));
+    float3 c = mix(root, shadow, smoothstep(0.0, 0.2, tip));
+    c = mix(c, mid, smoothstep(0.15, 0.5, tip));
+    c = mix(c, bright, smoothstep(0.45, 0.85, tip));
     c *= 0.85 + 0.3 * rnd;
     // 株の先の、細かく白く光る水滴
     float sp = smoothstep(0.82, 1.0, tip) * step(0.7, fract(rnd * 23.7));
@@ -148,7 +150,7 @@ half4 main(float2 p) {
     float grnd = hash21(gc + 1.3);
     float2 gp = (gc + 0.2 + 0.6 * hash22(gc + 1.3)) * 9.0 * dp;
     float rr = (0.22 + 0.3 * fract(grnd * 7.7)) * dp;
-    float spot = smoothstep(rr, rr * 0.2, length(q - gp)) * step(0.85, grnd);
+    float spot = (1.0 - smoothstep(rr * 0.2, rr, length(q - gp))) * step(0.85, grnd);
     col = mix(col, float3(0.85, 0.9, 0.86), spot * 0.8);
 
     // 岩の溝(ひび): ボロノイの境目を黒くする
@@ -169,12 +171,12 @@ half4 main(float2 p) {
             }
         }
     }
-    float crack = 1.0 - smoothstep(0.0, 0.035, f2 - f1);
-    col *= 1.0 - 0.7 * crack;
+    float crack = 1.0 - smoothstep(0.0, 0.025, f2 - f1);
+    col *= 1.0 - 0.45 * crack;
 
     // 地衣類の白っぽい斑
-    float lich = smoothstep(0.66, 0.74, fbm(q / (16.0 * dp) + 5.0));
-    col = mix(col, float3(0.40, 0.43, 0.37), lich * 0.5);
+    float lich = smoothstep(0.72, 0.8, fbm(q / (16.0 * dp) + 5.0));
+    col = mix(col, float3(0.40, 0.43, 0.37), lich * 0.35);
 
     // 杉の枯れ葉(赤茶の細い枝)
     float2 ta = float2(0.60, 0.66) * size;
@@ -203,18 +205,19 @@ half4 main(float2 p) {
             float keep = step(rnd, clamp(amt * 1.2 - 0.1, 0.0, 1.0));
             float2 v = q0 - ctr;
             float rr2 = length(v) * cs / rt;
-            float s = tuftStar(rr2, atan(v.y, v.x), rnd) * keep;
+            float2 st = tuftStar(rr2, atan(v.y, v.x), rnd);
+            float s = st.x * keep;
             if (s > bestS) {
                 bestS = s;
-                bestTip = smoothstep(0.25, 0.95, rr2);
+                bestTip = st.y;
                 bestRnd = rnd;
             }
         }
     }
     float mAmt = bandAmt(p, size, dp, seed);
     float3 mossDark = float3(0.03, 0.06, 0.02);
-    col = mix(col, mossDark, mAmt * 0.6);
-    col = mix(col, leafColor(bestTip, bestRnd) * (0.6 + 0.4 * diff), clamp(bestS, 0.0, 1.0));
+    col = mix(col, mossDark, mAmt * 0.3);
+    col = mix(col, leafColor(bestTip, bestRnd) * (0.8 + 0.3 * diff), clamp(bestS, 0.0, 1.0));
 
     // ---- ぼけ: 上の方は低い周波数だけの苔庭(明るい緑と灰色の柔らかい斑) ----
     float bl = smoothstep(0.0, 0.45, max(focus - uv.y, 0.0));
@@ -269,10 +272,11 @@ half4 main(float2 p) {
             float keep = step(rnd, clamp(1.0 - dc / fr, 0.0, 1.0));
             float2 v = q0 - ctr;
             float rr = length(v) * cs / rt;
-            float s = tuftStar(rr, atan(v.y, v.x), rnd) * keep;
+            float2 st = tuftStar(rr, atan(v.y, v.x), rnd);
+            float s = st.x * keep;
             if (s > bestS) {
                 bestS = s;
-                bestTip = smoothstep(0.25, 0.95, rr);
+                bestTip = st.y;
                 bestRnd = rnd;
             }
         }
@@ -280,7 +284,7 @@ half4 main(float2 p) {
 
     // ---- 色: 根元の黒緑のすき間に、株が明るく立つ ----
     float cover = clamp(bestS, 0.0, 1.0);
-    float3 gap = mix(float3(0.02, 0.045, 0.012), float3(0.09, 0.2, 0.04), vnoise(p / (1.2 * dp) + seed * 5.0));
+    float3 gap = mix(float3(0.01, 0.025, 0.008), float3(0.05, 0.12, 0.02), vnoise(p / (1.2 * dp) + seed * 5.0));
     float3 texCol = mix(gap, leafColor(bestTip, bestRnd), cover);
     texCol *= mix(0.5, 1.0, depth) * mix(1.08, 0.85, clamp(p.y / size.y, 0.0, 1.0));
 
@@ -288,9 +292,9 @@ half4 main(float2 p) {
     float ex = abs(p.x - c.x) / (size.x * 0.5);
     float ey = abs(p.y - c.y) / (size.y * 0.5);
     float edgeness = smoothstep(0.35, 0.95, max(ex * 0.8, ey));
-    float3 calm = mix(float3(0.62, 0.86, 0.28), float3(0.70, 0.91, 0.34), vnoise(p / (18.0 * dp) + seed * 3.0));
+    float3 calm = mix(float3(0.70, 0.90, 0.34), float3(0.78, 0.95, 0.40), vnoise(p / (18.0 * dp) + seed * 3.0));
     calm *= 0.92 + 0.08 * cover;
-    float3 col = mix(calm, texCol, edgeness);
+    float3 col = mix(calm, texCol, mix(0.3, 1.0, edgeness));
 
     // 押した状態: 少し暗く、平たくつぶれる
     col *= 1.0 - 0.22 * press;
@@ -336,8 +340,10 @@ half4 main(float2 p) {
     float3 n = normalize(float3(-(hx - h0) * 6.0 * dp, -(hy - h0) * 6.0 * dp, 1.0));
     float3 L = normalize(float3(-0.45, -0.6, 0.66));
     float diff = max(dot(n, L), 0.0);
-    float3 albedo = mix(float3(0.07, 0.072, 0.07), float3(0.15, 0.15, 0.145), h0);
+    float3 albedo = mix(float3(0.14, 0.142, 0.138), float3(0.27, 0.27, 0.262), h0);
     float3 col = albedo * (0.3 + 0.9 * mix(0.5, diff, shade));
+    // 中央は暗くして、淡い文字を読みやすくする
+    col *= mix(0.55, 1.0, edgeness);
 
     // 濡れたつや: 上の方ほど強い
     float3 H = normalize(L + float3(0.0, 0.0, 1.0));
@@ -353,9 +359,10 @@ half4 main(float2 p) {
 
     // 彫り込み: 上と左の内側に影、縁に溝
     float sh = (1.0 - smoothstep(0.0, 5.0 * dp, p.y)) + (1.0 - smoothstep(0.0, 5.0 * dp, p.x)) * 0.6;
-    col *= 1.0 - 0.55 * sunken * clamp(sh, 0.0, 1.0);
+    col *= 1.0 - 0.8 * sunken * clamp(sh, 0.0, 1.0);
     float groove = 1.0 - smoothstep(0.0, 1.2 * dp, abs(din - 1.5 * dp));
-    col *= 1.0 - 0.35 * sunken * groove;
+    col *= 1.0 - 0.6 * sunken * groove;
+    col *= 1.0 - 0.2 * sunken;
 
     // 押した状態: 少し暗く
     col *= 1.0 - 0.14 * press;
@@ -376,14 +383,15 @@ half4 main(float2 p) {
             float2 cp = ctr * cs;
             float dc = sdRoundRect(cp, size, rad);
             float2 uc = cp / size;
-            float cw = max(smoothstep(0.35, 0.0, uc.x) * (0.4 + 0.6 * smoothstep(0.3, 0.0, uc.y)), smoothstep(0.75, 1.0, uc.y));
+            float cw = max((1.0 - smoothstep(0.0, 0.35, uc.x)) * (0.4 + 0.6 * (1.0 - smoothstep(0.0, 0.3, uc.y))), smoothstep(0.75, 1.0, uc.y));
             float keep = step(-1.5 * dp, dc) * step(dc, 3.0 * dp) * step(rnd, moss * cw);
             float2 v = q0 - ctr;
             float rr = length(v) * cs / rt;
-            float s = tuftStar(rr, atan(v.y, v.x), rnd) * keep;
+            float2 st = tuftStar(rr, atan(v.y, v.x), rnd);
+            float s = st.x * keep;
             if (s > bestS) {
                 bestS = s;
-                bestTip = smoothstep(0.25, 0.95, rr);
+                bestTip = st.y;
                 bestRnd = rnd;
             }
         }

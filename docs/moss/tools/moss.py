@@ -6,13 +6,13 @@
 """
 import argparse
 import glob
+import io
 import os
 import re
 import struct
 
-import numpy as np  # noqa: F401  (依存として入れておく)
 import skia
-from PIL import Image, ImageDraw
+from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KT = os.path.join(HERE, '../../../app/src/main/java/com/example/businesscard/ui/moss/MossShaders.kt')
@@ -109,7 +109,7 @@ def compose(bg, key, press):
     values.update(spec['extra'])
     x = (W - w) / 2
     draw_part(canvas, spec['name'], x, MARGIN, w, h, pad, values)
-    return Image.open(__import__('io').BytesIO(png_bytes(surf.makeImageSnapshot())))
+    return Image.open(io.BytesIO(png_bytes(surf.makeImageSnapshot())))
 
 
 def stack(images, gap=24):
@@ -143,10 +143,10 @@ def main():
     H = 600
     tiles = [Image.open(r).convert('RGB') for r in refs]
     tiles = [t.resize((int(t.width * H / t.height), H)) for t in tiles]
-    rock_small = Image.open(__import__('io').BytesIO(rock_png)).convert('RGB')
+    rock_small = Image.open(io.BytesIO(rock_png)).convert('RGB')
     rock_small = rock_small.resize((int(rock_small.width * H / rock_small.height), H))
     btn = Image.open(os.path.join(args.out, 'moss_button.png')).convert('RGB')
-    close = btn.crop((int(btn.width * 0.0), 0, int(btn.width * 0.0) + 460, 460))
+    close = btn.crop((110, 90, 530, 290))   # 押していない部品の左の縁(1:1)
     row1 = stack_h(tiles)
     row2 = stack_h([rock_small, close])
     canvas = stack([row1, row2], gap=16)
