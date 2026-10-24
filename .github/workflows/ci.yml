@@ -98,12 +98,17 @@ jobs:
           tmp=$(mktemp -d)
           cp "$src"/*.png "$tmp"/
           cp "$src"/interactions.webp "$src"/interactions.gif "$tmp"/ 2>/dev/null || true
+          cp "$src"/koke_scroll.webp "$src"/koke_scroll.gif "$tmp"/ 2>/dev/null || true
           cd "$tmp"
           {
             printf '# Screenshots\n\n%s(%s)のスクリーンショット(Androidエミュレータ API 34 / Pixel 6 で *ScreenshotTest が撮影)\n\n' "${GITHUB_SHA::7}" "$GITHUB_REF_NAME"
             if [ -f interactions.webp ]; then
               printf '## 動き(登場 → ボタンを押して離す → スイッチ → トグル → タブ)\n\n![interactions](interactions.webp)\n\n'
               printf '動かない場合は [GIF版](interactions.gif)\n\n'
+            fi
+            if [ -f koke_scroll.webp ]; then
+              printf '## Koke のスクロール(側面が覗き、苔が手前にずれる)\n\n![koke_scroll](koke_scroll.webp)\n\n'
+              printf '動かない場合は [GIF版](koke_scroll.gif)\n\n'
             fi
             for f in *.png; do printf '## %s\n\n![%s](%s)\n\n' "${f%.png}" "$f" "$f"; done
           } > README.md
