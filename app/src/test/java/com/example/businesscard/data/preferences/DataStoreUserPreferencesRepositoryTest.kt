@@ -43,6 +43,9 @@ class DataStoreUserPreferencesRepositoryTest {
 
         repository.setThemeStyle(ThemeStyle.PORCELAIN)
         assertEquals(ThemeStyle.PORCELAIN, repository.themeStyle.first())
+
+        repository.setThemeStyle(ThemeStyle.KINU)
+        assertEquals(ThemeStyle.KINU, repository.themeStyle.first())
     }
 
     @Test
@@ -50,5 +53,6 @@ class DataStoreUserPreferencesRepositoryTest {
         assertEquals(ThemeStyle.DEFAULT, "REMOVED_STYLE".toThemeStyle())
         assertEquals(ThemeStyle.DEFAULT, null.toThemeStyle())
         assertEquals(ThemeStyle.EDGELIT, "EDGELIT".toThemeStyle())
+        assertEquals(ThemeStyle.KINU, "KINU".toThemeStyle())
     }
 }

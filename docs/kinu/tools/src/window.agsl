@@ -1,0 +1,84 @@
+// Kinu: 琥珀の窓(WINDOW)。名刺の面。SPEC §3・§6。
+// 上 18% に天井の灯り、縦の薄いカーテンのひだ、縦の桟(4分割)、手前のガラスに青海波の点描。
+uniform float2 size;
+uniform float dp;
+uniform float hdr;
+uniform float glow;
+uniform float seed;
+layout(color) uniform half4 amberHi;
+layout(color) uniform half4 amber;
+layout(color) uniform half4 amberDeep;
+layout(color) uniform half4 mullion;
+
+float3 toLin(half4 c) {
+    return float3(toLinearSrgb(c.rgb));
+}
+
+float3 toDisplay(float3 c) {
+    return float3(fromLinearSrgb(half3(c)));
+}
+
+float hash12(float2 p) {
+    float3 p3 = fract(float3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+float3 toneMap(float3 x, float peak) {
+    float lum = dot(x, float3(0.2126, 0.7152, 0.0722));
+    x = mix(x, float3(lum), smoothstep(0.75, 2.4, lum) * 0.8);
+    float3 over = max(x - float3(0.8), float3(0.0));
+    return min(x, float3(0.8)) + over / (float3(1.0) + over / (peak - 0.8));
+}
+
+half4 main(float2 p) {
+    float u = clamp(p.x / size.x, 0.0, 1.0);
+    float v = clamp(p.y / size.y, 0.0, 1.0);
+    float PI2 = 6.28318;
+
+    // 上から下へ: 明るい琥珀 → 琥珀 → 奥の暗い琥珀
+    float3 hi = toLin(amberHi);
+    float3 mid = toLin(amber);
+    float3 deep = toLin(amberDeep);
+    float3 col = mix(mid, hi, smoothstep(0.55, 0.0, v));
+    col = mix(col, deep, smoothstep(0.45, 1.0, v));
+
+    // 天井の灯り: 上 18% に点光源を横に並べる。HDR で白を少し超える
+    float ceilY = 0.09 * size.y;
+    float cellX = 22.0 * dp;
+    float dx = (fract(p.x / cellX + 0.5) - 0.5) * cellX;
+    float dyc = p.y - ceilY;
+    float lamp = exp(-(dx * dx + dyc * dyc) / (1.3 * dp * 1.3 * dp));
+    float ceilBand = exp(-pow(dyc / (3.0 * dp), 2.0)) * 0.25;
+    col += toLin(amberHi) * (lamp * 1.1 + ceilBand) * smoothstep(0.3, 0.0, v);
+
+    // 縦の薄いカーテン: 柔らかい縦縞(振幅 6%)
+    float fold = 0.5 + 0.5 * sin(p.x / dp * (PI2 / 13.0) + seed * 3.1 + 0.6 * sin(p.y / dp * 0.05));
+    col *= 1.0 - 0.06 * fold;
+
+    // 縦の桟: 4分割、幅 1dp、#7A5A40 30%
+    float cell = size.x / 4.0;
+    float m = abs(fract(p.x / cell + 0.5) - 0.5) * cell;
+    float bar = 1.0 - smoothstep(0.35 * dp, 0.5 * dp + 0.5, m);
+    col = mix(col, toLin(mullion), 0.3 * bar);
+
+    // 青海波の点描(不透明度 6%。扇の半径 10dp)
+    float rowH = 10.0 * dp;
+    float row = floor(p.y / rowH);
+    float ox = mod(row, 2.0) * 10.0 * dp;
+    float cx = floor((p.x - ox) / (20.0 * dp) + 0.5) * 20.0 * dp + ox;
+    float cy = (row + 1.0) * rowH;
+    float2 q = float2(p.x - cx, p.y - cy);
+    float r = length(q) / (10.0 * dp);
+    float ring = 1.0 - smoothstep(0.0, 0.08, abs(fract(r * 2.0) - 0.5) - 0.42);
+    float fan = step(q.y, 0.0) * step(r, 1.0) * ring;
+    col = mix(col, col * 0.7, 0.06 * fan);
+
+    // 灯りの強さ(0 → 暗いガラス、1 → 琥珀)
+    float3 dark = toLin(amberDeep) * 0.12;
+    float3 lin = mix(dark, col, smoothstep(0.0, 1.0, glow));
+
+    float3 shown = toDisplay(toneMap(lin, max(hdr, 1.0)));
+    shown += (hash12(p) + hash12(p + float2(17.3, 41.7)) - 1.0) / 255.0;
+    return half4(half3(shown), 1.0);
+}

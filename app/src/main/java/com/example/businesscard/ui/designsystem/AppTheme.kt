@@ -10,6 +10,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.businesscard.domain.model.ThemeStyle
+import com.example.businesscard.ui.kinu.DefaultKinuColors
+import com.example.businesscard.ui.kinu.KinuMaterialShapes
+import com.example.businesscard.ui.kinu.KinuTypography
+import com.example.businesscard.ui.kinu.LocalKinuColors
+import com.example.businesscard.ui.kinu.kinuColorScheme
 import com.example.businesscard.ui.porcelain.DefaultPorcelainColors
 import com.example.businesscard.ui.porcelain.LocalPorcelainColors
 import com.example.businesscard.ui.porcelain.PorcelainMaterialShapes
@@ -73,6 +78,20 @@ private val PorcelainDimens = AppDimens(
     detailSpacing = 24.dp,
 )
 
+/** Kinu の余白。Porcelain に近いが、一覧の名刺どうしを少し詰める(金の縁と光の線が次の名刺にかからない広さ)。 */
+private val KinuAppDimens = AppDimens(
+    screenHorizontal = 20.dp,
+    listSpacing = 28.dp,
+    fieldSpacing = 18.dp,
+    contentTop = 8.dp,
+    contentBottom = 32.dp,
+    actionsTop = 12.dp,
+    actionsBottom = 20.dp,
+    // 建物の角の光は外に広がるので、上下は影の余白を取らず、下だけ金の縁の分を広く取る
+    detailPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 24.dp),
+    detailSpacing = 24.dp,
+)
+
 /** 見た目ごとの余白・間隔。 */
 object AppTheme {
     val dimens: AppDimens
@@ -81,6 +100,7 @@ object AppTheme {
         get() = when (LocalThemeStyle.current) {
             ThemeStyle.EDGELIT -> EdgelitDimens
             ThemeStyle.PORCELAIN -> PorcelainDimens
+            ThemeStyle.KINU -> KinuAppDimens
         }
 }
 
@@ -98,15 +118,27 @@ fun BusinessCardAppTheme(style: ThemeStyle, content: @Composable () -> Unit) {
         val edgelit = MaterialTheme.colorScheme
         val edgelitType = MaterialTheme.typography
         val edgelitShapes = MaterialTheme.shapes
-        val porcelain = style == ThemeStyle.PORCELAIN
         CompositionLocalProvider(
             LocalThemeStyle provides style,
             LocalPorcelainColors provides DefaultPorcelainColors,
+            LocalKinuColors provides DefaultKinuColors,
         ) {
             MaterialTheme(
-                colorScheme = if (porcelain) porcelainColorScheme(DefaultPorcelainColors) else edgelit,
-                typography = if (porcelain) PorcelainTypography else edgelitType,
-                shapes = if (porcelain) PorcelainMaterialShapes else edgelitShapes,
+                colorScheme = when (style) {
+                    ThemeStyle.EDGELIT -> edgelit
+                    ThemeStyle.PORCELAIN -> porcelainColorScheme(DefaultPorcelainColors)
+                    ThemeStyle.KINU -> kinuColorScheme(DefaultKinuColors)
+                },
+                typography = when (style) {
+                    ThemeStyle.EDGELIT -> edgelitType
+                    ThemeStyle.PORCELAIN -> PorcelainTypography
+                    ThemeStyle.KINU -> KinuTypography
+                },
+                shapes = when (style) {
+                    ThemeStyle.EDGELIT -> edgelitShapes
+                    ThemeStyle.PORCELAIN -> PorcelainMaterialShapes
+                    ThemeStyle.KINU -> KinuMaterialShapes
+                },
                 content = content,
             )
         }
@@ -118,4 +150,5 @@ val ThemeStyle.isDark: Boolean
     get() = when (this) {
         ThemeStyle.EDGELIT -> true
         ThemeStyle.PORCELAIN -> false
+        ThemeStyle.KINU -> true
     }

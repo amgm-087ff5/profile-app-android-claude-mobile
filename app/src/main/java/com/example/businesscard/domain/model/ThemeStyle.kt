@@ -12,6 +12,9 @@ enum class ThemeStyle {
 
     /** 明るいグレーの板に、柔らかい影の丸いボタン。縁から光がにじむ波が横切る(ui/porcelain) */
     PORCELAIN,
+
+    /** 夜の黒い塔の足元に、絹のドレープのように波打つ淡い金の帯が重なり、帯の上の縁に光の線が灯る(ui/kinu。見本は夜の銀座の角の外観) */
+    KINU,
     ;
 
     companion object {

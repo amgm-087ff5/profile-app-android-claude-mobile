@@ -38,6 +38,20 @@ import com.example.businesscard.ui.component.SoftGlassScaffold
 import com.example.businesscard.ui.component.SoftGlassTopBar
 import com.example.businesscard.ui.component.glassSurface
 import com.example.businesscard.ui.glass.LocalGlassScene
+import com.example.businesscard.ui.kinu.KinuBackground
+import com.example.businesscard.ui.kinu.KinuBusinessCard
+import com.example.businesscard.ui.kinu.KinuButton
+import com.example.businesscard.ui.kinu.KinuChoice
+import com.example.businesscard.ui.kinu.KinuConfirmDialog
+import com.example.businesscard.ui.kinu.KinuDialog
+import com.example.businesscard.ui.kinu.KinuIconButton
+import com.example.businesscard.ui.kinu.KinuMessage
+import com.example.businesscard.ui.kinu.KinuScaffold
+import com.example.businesscard.ui.kinu.KinuTextField
+import com.example.businesscard.ui.kinu.KinuTheme
+import com.example.businesscard.ui.kinu.KinuTone
+import com.example.businesscard.ui.kinu.KinuTopBar
+import com.example.businesscard.ui.kinu.KinuType
 import com.example.businesscard.ui.porcelain.PorcelainBackground
 import com.example.businesscard.ui.porcelain.PorcelainBusinessCard
 import com.example.businesscard.ui.porcelain.PorcelainButton
@@ -82,6 +96,11 @@ private fun AppButtonStyle.toPorcelainTone() = when (this) {
     AppButtonStyle.Secondary, AppButtonStyle.Danger -> PorcelainTone.Light
 }
 
+private fun AppButtonStyle.toKinuTone() = when (this) {
+    AppButtonStyle.Primary -> KinuTone.Gold
+    AppButtonStyle.Secondary, AppButtonStyle.Danger -> KinuTone.Night
+}
+
 /** 全画面共通の骨格(背景・上のバー・下の操作・中身)。 */
 @Composable
 fun AppScaffold(
@@ -93,6 +112,7 @@ fun AppScaffold(
     when (LocalThemeStyle.current) {
         ThemeStyle.EDGELIT -> SoftGlassScaffold(modifier, topBar, bottomBar, content)
         ThemeStyle.PORCELAIN -> PorcelainScaffold(modifier, topBar, bottomBar, content)
+        ThemeStyle.KINU -> KinuScaffold(modifier, topBar, bottomBar, content)
     }
 }
 
@@ -102,6 +122,7 @@ fun AppBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.(
     when (LocalThemeStyle.current) {
         ThemeStyle.EDGELIT -> SoftGlassBackground(modifier, content)
         ThemeStyle.PORCELAIN -> PorcelainBackground(modifier, content = content)
+        ThemeStyle.KINU -> KinuBackground(modifier, content)
     }
 }
 
@@ -133,6 +154,7 @@ fun AppTopBar(
             }
         }
         ThemeStyle.PORCELAIN -> PorcelainTopBar(title = title, modifier = modifier, onBack = onBack, actions = actions)
+        ThemeStyle.KINU -> KinuTopBar(title = title, modifier = modifier, onBack = onBack, actions = actions)
     }
 }
 
@@ -156,6 +178,18 @@ fun AppButton(
                 AppButtonStyle.Primary -> PorcelainTheme.colors.onDark
                 AppButtonStyle.Secondary -> PorcelainTheme.colors.ink
                 AppButtonStyle.Danger -> PorcelainTheme.colors.danger
+            },
+        )
+        ThemeStyle.KINU -> KinuButton(
+            text = text,
+            onClick = onClick,
+            modifier = modifier,
+            tone = style.toKinuTone(),
+            leadingIcon = icon,
+            contentColor = when (style) {
+                AppButtonStyle.Primary -> KinuTheme.colors.ink
+                AppButtonStyle.Secondary -> KinuTheme.colors.champagne
+                AppButtonStyle.Danger -> KinuTheme.colors.danger
             },
         )
     }
@@ -189,6 +223,13 @@ fun AppIconButton(
                 AppButtonStyle.Secondary -> PorcelainTheme.colors.ink
                 AppButtonStyle.Danger -> PorcelainTheme.colors.danger
             },
+        )
+        ThemeStyle.KINU -> KinuIconButton(
+            onClick = onClick,
+            icon = icon,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            tone = style.toKinuTone(),
         )
     }
 }
@@ -228,6 +269,17 @@ fun AppTextField(
             errorText = errorText,
             keyboardOptions = keyboardOptions,
         )
+        ThemeStyle.KINU -> KinuTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = label,
+            modifier = modifier,
+            placeholder = placeholder,
+            leadingIcon = leadingIcon,
+            isError = isError,
+            errorText = errorText,
+            keyboardOptions = keyboardOptions,
+        )
     }
 }
 
@@ -237,6 +289,7 @@ fun AppBusinessCard(card: BusinessCard, modifier: Modifier = Modifier, onClick: 
     when (LocalThemeStyle.current) {
         ThemeStyle.EDGELIT -> BusinessCardView(card = card, modifier = modifier, onClick = onClick)
         ThemeStyle.PORCELAIN -> PorcelainBusinessCard(card = card, modifier = modifier, onClick = onClick)
+        ThemeStyle.KINU -> KinuBusinessCard(card = card, modifier = modifier, onClick = onClick)
     }
 }
 
@@ -254,6 +307,7 @@ fun AppMessage(text: String, modifier: Modifier = Modifier) {
                 .padding(horizontal = 24.dp, vertical = 20.dp),
         )
         ThemeStyle.PORCELAIN -> PorcelainMessage(text = text, modifier = modifier)
+        ThemeStyle.KINU -> KinuMessage(text = text, modifier = modifier)
     }
 }
 
@@ -270,6 +324,7 @@ fun AppConfirmDialog(
     when (LocalThemeStyle.current) {
         ThemeStyle.EDGELIT -> GlassConfirmDialog(title, message, confirmLabel, dismissLabel, onConfirm, onDismiss)
         ThemeStyle.PORCELAIN -> PorcelainConfirmDialog(title, message, confirmLabel, dismissLabel, onConfirm, onDismiss)
+        ThemeStyle.KINU -> KinuConfirmDialog(title, message, confirmLabel, dismissLabel, onConfirm, onDismiss)
     }
 }
 
@@ -303,6 +358,7 @@ fun AppDialog(
             }
         }
         ThemeStyle.PORCELAIN -> PorcelainDialog(title = title, onDismiss = onDismiss, message = message, content = content)
+        ThemeStyle.KINU -> KinuDialog(title = title, onDismiss = onDismiss, message = message, content = content)
     }
 }
 
@@ -318,6 +374,7 @@ fun AppChoice(text: String, selected: Boolean, onClick: () -> Unit, modifier: Mo
             icon = if (selected) Icons.Filled.Check else null,
         )
         ThemeStyle.PORCELAIN -> PorcelainChoice(text = text, selected = selected, onClick = onClick, modifier = modifier)
+        ThemeStyle.KINU -> KinuChoice(text = text, selected = selected, onClick = onClick, modifier = modifier)
     }
 }
 
@@ -327,5 +384,6 @@ fun AppCaption(text: String, modifier: Modifier = Modifier) {
     when (LocalThemeStyle.current) {
         ThemeStyle.EDGELIT -> Text(text = text, style = SoftGlassType.caption, color = SoftGlassTheme.colors.inkMuted, modifier = modifier)
         ThemeStyle.PORCELAIN -> Text(text = text, style = PorcelainType.caption, color = PorcelainTheme.colors.inkMuted, modifier = modifier)
+        ThemeStyle.KINU -> Text(text = text, style = KinuType.caption, color = KinuTheme.colors.champagneMuted, modifier = modifier)
     }
 }

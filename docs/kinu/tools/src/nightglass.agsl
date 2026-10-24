@@ -1,0 +1,76 @@
+// Kinu: 夜のガラス(NIGHT_GLASS)。副ボタン・アイコンボタン・入力欄・ダイアログ。SPEC §3・§6。
+// 黒いガラス。上の縁に弱い光の線。塔の銀の縦の波線がごくわずかに映る。縁は 1dp の細い線。
+uniform float2 size;
+uniform float dp;
+uniform float hdr;
+uniform float line;
+uniform float ember;
+uniform float2 touch;
+layout(color) uniform half4 glassTop;
+layout(color) uniform half4 glassBottom;
+layout(color) uniform half4 fin;
+layout(color) uniform half4 lineCore;
+layout(color) uniform half4 amber;
+
+float3 toLin(half4 c) {
+    return float3(toLinearSrgb(c.rgb));
+}
+
+float3 toDisplay(float3 c) {
+    return float3(fromLinearSrgb(half3(c)));
+}
+
+float hash12(float2 p) {
+    float3 p3 = fract(float3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+float3 toneMap(float3 x, float peak) {
+    float lum = dot(x, float3(0.2126, 0.7152, 0.0722));
+    x = mix(x, float3(lum), smoothstep(0.75, 2.4, lum) * 0.8);
+    float3 over = max(x - float3(0.8), float3(0.0));
+    return min(x, float3(0.8)) + over / (float3(1.0) + over / (peak - 0.8));
+}
+
+half4 main(float2 p) {
+    float u = clamp(p.x / size.x, 0.0, 1.0);
+    float v = clamp(p.y / size.y, 0.0, 1.0);
+    float PI2 = 6.28318;
+
+    // 黒いガラス: 上がわずかに明るく、下へ沈む
+    float3 col = mix(toLin(glassTop), toLin(glassBottom), v);
+
+    // 塔の銀の縦の波線が映り込む(不透明度 5%)。間隔 11dp・うねり振幅 2.5dp・波長 140dp
+    float idx = floor(p.x / (11.0 * dp));
+    float ph = idx * 1.7;
+    float wx = p.x - 2.5 * dp * sin(PI2 * p.y / (140.0 * dp) + ph);
+    float fx = abs(fract(wx / (11.0 * dp) + 0.5) - 0.5) * 11.0 * dp;
+    float wire = exp(-pow(fx / (0.4 * dp), 2.0));
+    col += toLin(fin) * wire * 0.05;
+
+    // 上の縁の光の線(弱め。line 0.35 が通常)。芯 1dp 前後、上にじみ 3dp
+    bool touchOn = touch.x >= 0.0;
+    float tg = touchOn ? exp(-pow((p.x - touch.x) / (size.x * 0.25), 2.0)) : 0.0;
+    float lineAmt = line * (touchOn ? (0.6 + 0.8 * tg) : 1.0);
+    float d = p.y / dp - 0.5;                       // 縁からの距離(dp)
+    float core = exp(-pow(d / 0.6, 2.0));
+    float halo = exp(-max(d, 0.0) / 3.0) * 0.4;
+    float3 lineCol = toLin(lineCore);
+    col += lineCol * lineAmt * (core * 1.8 + halo * 0.5) * (0.9 + 0.1 * sin(PI2 * u));
+
+    // 奥の琥珀のにじみ(入力中の欄)。下寄りの中央
+    float2 e = float2(u - 0.5, (v - 0.7) * 1.4);
+    float bloom = exp(-dot(e, e) / 0.18);
+    col += toLin(amber) * ember * bloom * 0.16;
+
+    // 縁: 1dp の細い線(#8B7A62 40% 相当。アンバーを暗く混ぜて代用)
+    float edgeD = min(min(p.x, size.x - p.x), min(p.y, size.y - p.y)) / dp;
+    float rimMask = 1.0 - smoothstep(0.5, 1.2, edgeD);
+    float3 rimCol = mix(toLin(amber), toLin(glassBottom), 0.45);
+    col = mix(col, rimCol, 0.4 * rimMask);
+
+    float3 shown = toDisplay(toneMap(col, max(hdr, 1.0)));
+    shown += (hash12(p) + hash12(p + float2(17.3, 41.7)) - 1.0) / 255.0;
+    return half4(half3(shown), 1.0);
+}
