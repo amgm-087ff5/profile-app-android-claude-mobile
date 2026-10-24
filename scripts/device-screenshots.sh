@@ -36,3 +36,5 @@ ls -la shots/screenshots
 python3 -m venv /tmp/motion-venv
 /tmp/motion-venv/bin/pip install --quiet pillow
 /tmp/motion-venv/bin/python scripts/make-motion.py shots/screenshots/frames shots/screenshots/interactions
+# Koke のスクロール(frames/koke_scroll/ のコマ)も同じ要領で動画にする
+/tmp/motion-venv/bin/python scripts/make-motion.py shots/screenshots/frames/koke_scroll shots/screenshots/koke_scroll

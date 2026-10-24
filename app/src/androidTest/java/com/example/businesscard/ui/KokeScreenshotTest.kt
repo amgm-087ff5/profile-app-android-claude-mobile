@@ -127,6 +127,35 @@ class KokeScreenshotTest {
         save("koke_catalog_pressed", captureRoot())
     }
 
+    /**
+     * スクロールで部品の側面が覗き、苔がずれる様子をコマ撮りする(CIがつないで動画にする)。
+     * 見本を3回繰り返して、リストを十分に長くする。コマは frames/koke_scroll/ に置く。
+     */
+    @Test
+    fun scrollFrames() {
+        val cards = (1..3).flatMap { SampleCards.all }.mapIndexed { index, card -> card.copy(id = index + 1L) }
+        composeRule.setContent {
+            BusinessCardAppTheme(ThemeStyle.KOKE) {
+                ListScreen(uiState = ListUiState(cards = cards, isLoading = false), onAddClick = {}, onCardClick = {})
+            }
+        }
+        settle()
+        val dir = File(screenshotDir(), "frames/koke_scroll").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        repeat(SCROLL_FRAMES) { index ->
+            composeRule.onRoot().performTouchInput {
+                swipeUp(startY = centerY + 150f, endY = centerY - 150f, durationMillis = 600)
+            }
+            composeRule.waitForIdle()
+            val bitmap = captureRoot()
+            File(dir, "f%03d.png".format(index)).outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+        }
+    }
+
     private fun settle() {
         composeRule.waitForIdle()
         Thread.sleep(1_500)
@@ -170,5 +199,8 @@ class KokeScreenshotTest {
 
     private companion object {
         const val CAPTURE_ATTEMPTS = 4
+
+        /** スクロールのコマ撮りで、1回ごとに撮る回数 */
+        const val SCROLL_FRAMES = 12
     }
 }
