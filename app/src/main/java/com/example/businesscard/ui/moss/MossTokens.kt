@@ -2,13 +2,13 @@ package com.example.businesscard.ui.moss
 
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -138,10 +138,10 @@ object MossType {
  * 苔のクッションは形を shader で描くため、ここは当たり判定と枠の形にだけ使う。
  */
 object MossShapes {
-    val card: Shape = RoundedCornerShape(14.dp)
-    val control: Shape = RoundedCornerShape(12.dp)
-    val field: Shape = RoundedCornerShape(10.dp)
-    val dialog: Shape = RoundedCornerShape(18.dp)
+    val card: CornerBasedShape = RoundedCornerShape(14.dp)
+    val control: CornerBasedShape = RoundedCornerShape(12.dp)
+    val field: CornerBasedShape = RoundedCornerShape(10.dp)
+    val dialog: CornerBasedShape = RoundedCornerShape(18.dp)
 }
 
 /**
