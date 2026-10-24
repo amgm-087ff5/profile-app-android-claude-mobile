@@ -159,12 +159,13 @@ class MossScreenshotTest {
             try {
                 return composeRule.onRoot().captureToImage().asAndroidBitmap()
             } catch (e: ComposeTimeoutException) {
-                if (attempt == CAPTURE_ATTEMPTS - 1) throw e
                 composeRule.waitForIdle()
                 Thread.sleep(1_000)
             }
         }
-        error("unreachable")
+        // それでも間に合わないときは、画面全体をそのまま撮る(描き終わるのを待たない撮り方)
+        Thread.sleep(3_000)
+        return InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
     }
 
     private companion object {

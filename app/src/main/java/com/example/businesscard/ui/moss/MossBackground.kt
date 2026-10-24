@@ -4,6 +4,7 @@ import android.graphics.RuntimeShader
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -11,6 +12,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ShaderBrush
 
 /** 岩の背景(画面の中ほどに、くっきりする位置)。見本の写真で、手前の岩肌がはっきり見える高さ。 */
@@ -32,21 +35,24 @@ fun MossBackground(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val rock = remember { RuntimeShader(MossShaders.ROCK) }
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .drawWithCache {
-                val brush = ShaderBrush(rock)
-                onDrawBehind {
+    Box(modifier = modifier.fillMaxSize()) {
+        // 岩は重いシェーダーなので、別のレイヤー(オフスクリーン)に描いて使い回す。
+        // 上に載る部品が動いても、大きさが変わらない限り岩は描き直さない
+        Spacer(
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithCache {
+                    val brush = ShaderBrush(rock)
                     rock.setFloatUniform("size", size.width, size.height)
                     rock.setFloatUniform("dp", density)
                     rock.setFloatUniform("seed", ROCK_SEED)
                     rock.setFloatUniform("focus", ROCK_FOCUS)
-                    drawRect(brush = brush)
-                }
-            },
-        content = content,
-    )
+                    onDrawBehind { drawRect(brush = brush) }
+                },
+        )
+        content()
+    }
 }
 
 /**

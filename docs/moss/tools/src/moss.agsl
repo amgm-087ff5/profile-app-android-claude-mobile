@@ -1,0 +1,49 @@
+
+// ---- MOSS: 苔のクッション(主ボタン・選択中)。星形の株が何層にも重なった、ふかふかの苔 ----
+uniform float2 size;
+uniform float dp;
+uniform float seed;
+uniform float radius;
+uniform float pad;
+uniform float press;
+
+// クッションの高さ(px)。縁から内側へ盛り上がるドームに、株の塊の凹凸を足す
+float cushionH(float2 p) {
+    float d = -sdRoundRect(p, size, radius);
+    float s = clamp(d / (12.0 * dp), 0.0, 1.0);
+    float dome = 1.0 - (1.0 - s) * (1.0 - s);
+    float clump = fbm(p / (16.0 * dp) + seed * 3.0 + 5.0);
+    return dome * 9.0 * dp + clump * 7.0 * dp * (1.0 - 0.5 * press);
+}
+
+half4 main(float2 p) {
+    float d0 = sdRoundRect(p, size, radius);
+    // 縁のほつれ: 輪郭を雑音でゆがめる
+    float rag = (vnoise(p / (3.0 * dp) + seed * 13.7) - 0.5) * 3.0 * dp;
+    float body = 1.0 - smoothstep(-1.5 * dp, 0.0, d0 + rag);
+
+    float e = dp;
+    float hx = cushionH(p + float2(e, 0.0)) - cushionH(p - float2(e, 0.0));
+    float hy = cushionH(p + float2(0.0, e)) - cushionH(p - float2(0.0, e));
+    float3 nrm = normalize(float3(-hx / (2.0 * e), -hy / (2.0 * e), 1.0));
+    float lam = max(dot(nrm, normalize(float3(0.0, -0.6, 0.8))), 0.0);
+
+    // 縁の外へ行くほど株はまばらで小さい。pad の端では消える
+    float outside = clamp(d0 / max(pad, 1.0), 0.0, 1.0);
+    float density = 1.0 - outside;
+    float shrink = mix(1.0, 0.6, outside) * mix(1.0, 0.85, press);
+    float4 mc = mossColor(p, dp, seed, lam, density, shrink);
+    float3 col = mc.rgb;
+    col *= mix(0.72, 1.0, smoothstep(0.0, 10.0 * dp, -d0));
+    col *= 1.0 - 0.15 * press;
+
+    // 中央の帯: 模様のコントラストを弱め、明るさを中間に寄せる(黒緑の文字を読みやすく)
+    float ay = abs(p.y - size.y * 0.5) / size.y;
+    float ax = smoothstep(0.0, 18.0 * dp, min(p.x, size.x - p.x));
+    float wb = (1.0 - smoothstep(0.22, 0.36, ay)) * ax;
+    float3 meanC = mossRamp(0.56) * (1.0 - 0.15 * press);
+    col = mix(col, mix(meanC, col, 0.45), wb * 0.9);
+
+    float a = clamp(max(body, mc.a * density), 0.0, 1.0);
+    return half4(half3(clamp(col, 0.0, 1.0) * a), half(a));
+}
