@@ -26,6 +26,6 @@
     <string name="theme_porcelain">Porcelain(陶器)</string>
     <string name="theme_porcelain_description">明るいグレーの板に、柔らかい影の丸いボタン</string>
     <string name="theme_koke">Koke(苔むす)</string>
-    <string name="theme_koke_description">平らでモダンな部品に、精巧な苔が部分的に生える</string>
+    <string name="theme_koke_description">角ばった黒い濡れた岩の部品に、精巧な苔が部分的に生える</string>
     <string name="close">閉じる</string>
 </resources>
