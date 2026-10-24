@@ -1,36 +1,24 @@
 package com.example.businesscard.ui.moss
 
 /**
- * Moss テーマの絵を描く AGSL シェーダー(Android 13 以上の RuntimeShader で GPU 上で動かす)。
+ * Moss(苔岩)の AGSL シェーダー(Android 13 以上の RuntimeShader で描く)。
  *
- * - ROCK: 画面全体の背景。濡れた黒い岩に、上はぼけた苔庭、下と端はくっきりした苔が広がる
- * - MOSS: 苔のクッション(主ボタン・選択中の選択肢)。細い葉が星形に開いた小さな株が密集する
- * - STONE: 磨いた濡れ石の板(名刺・副ボタン・入力欄・ダイアログ)
+ *  - ROCK: 画面全体の背景。雨に濡れた黒い岩(溶岩のような不揃いのこぶ、こぶの頂上の濡れたつや、割れ目)、
+ *    画面の下と端に這う苔の群れ、地衣類の斑点、杉の枯れ葉。画面の上ほど奥で、苔庭がぼける(浅い被写界深度)
+ *  - MOSS: 苔のクッション(主ボタン・選択中)。細い葉が星形に開いた株を3層重ね、上からの光で上面を明るく、谷を黒緑に
+ *  - STONE: 磨いた濡れ石の板(名刺・副ボタン・入力欄・ダイアログ)。面取りの縁のつや、曇天の映り込み、縁に生える苔
  *
- * ## 苔の株の作り方
- * 画面を細かいマス目に分け、マスごとに株の中心を1つずつ置く(ボロノイの考え方)。
- * 1画素では近くの 3x3 マスの株だけを調べ、いちばん濃い株の値を使う。
- * 株は中心から放射する細い葉の集まり。葉の数は 6〜9 本で、株ごとに変える。
+ * 共通の uniform: size(描く大きさ、px), dp(1dp の px 数), seed(模様をずらす種)。
+ * MOSS / STONE は (-pad..size+pad) の矩形に描き、premultiplied の色を返す(縁の苔が形の外へほつれるため)。
+ * 宣言した uniform はすべて使う(コードから値を入れるので、使われずに消えると設定時に落ちる)。
  *
- * ## 光の考え方
- * 光は上(画面の上の方)から当たる。岩や石の表面の小さな凹凸は、雑音の高さの差から
- * 法線を作り、その法線と光の向きの内積で明るさを決める。濡れた所は鏡面反射で白い点が立つ。
- *
- * すべてのシェーダーは同じ決まりで書く(ui/moss/ の描画コードと対応)。
- * - 共通の uniform: size(描く大きさ、px), dp(1dp の px 数), seed(模様をずらす種)
- * - 出力は premultiplied(外側は a = 0)。色は画面の表示の値(線形化はしない)
- * - 雑音関数は各シェーダーの中に書く。AGSL に #include は無いので COMMON をつなげて使う
- *
- * docs/moss/tools/moss.py が、この文字列を正規表現で取り出して Skia(CPU)で同じ絵を描く。
- * 文字列の中では "$" を使わないこと。
+ * 手元での確認: docs/moss/tools/moss.py(skia-python で同じシェーダーを CPU で描く)。
  */
 object MossShaders {
-
-    /** 共通の関数。雑音、角丸の形、株の葉、表面の高さ、葉の色、帯の位置。 */
     private const val COMMON = """
-const float PI = 3.14159265;
+// ---- 共通: 乱数・雑音・形・苔の株 ----
+const float TAU = 6.2831853;
 
-// 乱数(0..1)。画素の位置から決まる
 float hash21(float2 p) {
     float3 p3 = fract(float3(p.xyx) * 0.1031);
     p3 += dot(p3, p3.yzx + 33.33);
@@ -52,7 +40,7 @@ float vnoise(float2 p) {
                mix(hash21(i + float2(0.0, 1.0)), hash21(i + float2(1.0, 1.0)), u.x), u.y);
 }
 
-// 大きさの違う雑音を4段重ねたもの(0..1 くらい)
+// 大きさの違う雑音を4段重ねたもの(0..1)
 float fbm(float2 p) {
     float s = 0.0;
     float a = 0.5;
@@ -65,177 +53,252 @@ float fbm(float2 p) {
     return s / 0.9375;
 }
 
-// 角丸長方形の距離(中は負、外は正)。p は左上を 0 とした座標
+// 丸い粒の盛り上がり(0..1)。セルごとに1つの粒。中心が高く、粒の間は 0
+float granules(float2 q) {
+    float2 c0 = floor(q);
+    float h = 0.0;
+    for (int j = -1; j <= 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+            float2 cell = c0 + float2(float(i), float(j));
+            float2 ctr = cell + 0.2 + 0.6 * hash22(cell);
+            float r = 0.55 + 0.35 * hash21(cell + 7.1);
+            float d = length(q - ctr) / r;
+            h = max(h, (1.0 - d * d) * (0.6 + 0.4 * hash21(cell + 3.3)));
+        }
+    }
+    return clamp(h, 0.0, 1.0);
+}
+
+// 角丸長方形の距離(中は負、外は正)。p は左上を 0 とした座標、b は大きさ
 float sdRoundRect(float2 p, float2 b, float r) {
-    float2 q = abs(p - b * 0.5) - (b * 0.5 - float2(r));
-    return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - r;
+    float rr = min(r, min(b.x, b.y) * 0.5);
+    float2 q = abs(p - b * 0.5) - (b * 0.5 - float2(rr));
+    return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - rr;
 }
 
-// 株の1本ぶんの値。x = 濃さ(0..1)、y = 明るさ(葉の先ほど明るい、0..1)
-// r は株の中心からの距離(株の半径 = 1)、a は角度。葉は 6〜9 本。細い葉(spike)と、根元の詰まった芯(core)を足す
-float2 tuftStar(float r, float a, float rnd) {
-    float n = 6.0 + floor(rnd * 4.0);
-    float ph = fract(rnd * 7.31) * 6.2832;
-    float lobe = 0.5 + 0.5 * cos(n * a + ph);
-    float spike = pow(lobe, 6.0) * (1.0 - smoothstep(0.3, 1.0, r));
-    float core = 1.0 - smoothstep(0.2, 0.6, r);
-    float dens = max(core * 0.9, spike);
-    float bright = max(core * 0.25, spike * (0.35 + 0.65 * smoothstep(0.2, 0.9, r)));
-    return float2(dens, bright);
+// 苔の色の並び。x は 0(根元の黒緑) から 1(先端の淡い黄緑)
+float3 mossRamp(float x) {
+    float3 c = mix(float3(0.070, 0.098, 0.031), float3(0.235, 0.306, 0.086), smoothstep(0.0, 0.25, x));
+    c = mix(c, float3(0.502, 0.604, 0.212), smoothstep(0.25, 0.5, x));
+    c = mix(c, float3(0.718, 0.855, 0.325), smoothstep(0.5, 0.75, x));
+    c = mix(c, float3(0.860, 0.945, 0.500), smoothstep(0.75, 1.0, x));
+    return c;
 }
 
-// 株の色。tip は中心からの位置(0 = 根元、1 = 先端)。先端が明るい黄緑、根元は黒緑
-float3 leafColor(float tip, float rnd) {
-    float3 root = float3(0.02, 0.045, 0.012);
-    float3 shadow = float3(0.09, 0.22, 0.04);
-    float3 mid = float3(0.30, 0.58, 0.11);
-    float3 bright = float3(0.74, 0.93, 0.30);
-    float3 c = mix(root, shadow, smoothstep(0.0, 0.2, tip));
-    c = mix(c, mid, smoothstep(0.15, 0.5, tip));
-    c = mix(c, bright, smoothstep(0.45, 0.85, tip));
-    c *= 0.85 + 0.3 * rnd;
-    // 株の先の、細かく白く光る水滴
-    float sp = smoothstep(0.82, 1.0, tip) * step(0.7, fract(rnd * 23.7));
-    return mix(c, float3(0.92, 1.0, 0.80), sp * 0.85);
+// 1層ぶんの苔の株(細い葉が星形に開く)。cs は格子の大きさ(px)。
+// keepBias: 株を残す割合(0..1)。shrink: 株の大きさの倍率
+// 戻り値: x = 被覆, y = 株の中での位置(0 根元..1 先端), z = 株の乱数, w = 水滴
+float4 tuftLayer(float2 p, float cs, float2 sd, float dpx, float keepBias, float shrink, out float dirOut) {
+    float2 q = p / cs;
+    float2 cell0 = floor(q);
+    float bestC = 0.0;
+    float bestT = 0.0;
+    float bestR = 0.0;
+    float bestW = 0.0;
+    float bestD = 0.0;
+    for (int j = -1; j <= 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+            float2 cell = cell0 + float2(float(i), float(j));
+            float2 key = cell + 0.5 + sd;
+            float rnd = hash21(key);
+            float2 ctr = cell + 0.5 + (hash22(key + 3.7) - 0.5) * 0.9;
+            float keep = step(1.0 - keepBias, fract(rnd * 3.91 + 0.17));
+            float R = (0.62 + 0.18 * fract(rnd * 5.3)) * shrink * cs;
+            float2 v = q - ctr;
+            float r = length(v) * cs;
+            float ur = r / max(R, 0.001);
+            float n = 7.0 + floor(rnd * 4.0);
+            float P = TAU / n;
+            float ang = atan(v.y, v.x) - fract(rnd * 7.31) * P;
+            float f = ang / P;
+            float dA = abs(f - floor(f + 0.5)) * P;
+            float dperp = dA * r;
+            float hw = (0.26 + 0.2 * fract(rnd * 13.7)) * dpx * (1.0 - 0.7 * ur);
+            float leaf = 1.0 - smoothstep(hw * 0.55, hw, dperp);
+            float core = 1.0 - smoothstep(0.1, 0.3, ur);
+            float inside = 1.0 - smoothstep(0.9, 1.0, ur);
+            float cov = max(leaf, core * 0.7) * inside * keep;
+            float spot = smoothstep(0.78, 1.0, ur) * step(0.88, fract(rnd * 31.7)) * cov;
+            if (cov > bestC) {
+                bestC = cov;
+                bestT = ur;
+                bestR = rnd;
+                bestW = spot;
+                bestD = -v.y / max(length(v), 0.001);
+            }
+        }
+    }
+    dirOut = bestD;
+    return float4(bestC, clamp(bestT, 0.0, 1.0), bestR, bestW);
 }
 
-// 岩や石の表面の高さ(凹凸の粒)
-float surfH(float2 q, float dp) {
-    return 0.65 * fbm(q / (2.4 * dp)) + 0.35 * fbm(q / (0.8 * dp));
+// 苔の面の色。lam = 群れの起伏への上からの光(0..1)、density = 株の密度(0..1)、shrink = 株の大きさ。
+// 戻り値: rgb と、株が覆っている割合(a)
+float4 mossColor(float2 p, float dpx, float seedv, float lam, float density, float shrink) {
+    float gapN = vnoise(p / (1.2 * dpx) + seedv * 5.0);
+    float3 col = mossRamp(0.03 + 0.08 * gapN + 0.1 * lam);
+    float covMax = 0.0;
+    for (int k = 0; k < 3; k++) {
+        float kk = float(k);
+        float dirY = 0.0;
+        float layerKeep = clamp(density * (1.15 - 0.15 * kk), 0.0, 1.0);
+        float4 tf = tuftLayer(p, (3.5 + kk) * dpx, float2(seedv * 19.3 + kk * 37.1, seedv * 11.7 + kk * 21.9), dpx, layerKeep, shrink, dirY);
+        float idx = 0.12 + 0.68 * pow(tf.y, 1.5) + 0.35 * (lam - 0.6) + 0.12 * (tf.z - 0.5) + 0.12 * dirY + 0.06 * kk;
+        float3 lc = mossRamp(clamp(idx, 0.0, 1.0));
+        float lum = dot(lc, float3(0.3, 0.59, 0.11));
+        lc = mix(float3(lum), lc, 1.2) * (0.9 + 0.2 * fract(tf.z * 41.9));
+        lc = mix(lc, float3(0.92, 0.97, 0.78), tf.w * 0.85);
+        col = mix(col, lc, tf.x);
+        covMax = max(covMax, tf.x);
+    }
+    col *= 0.35 + 0.9 * lam;
+    return float4(col, covMax);
 }
 
-// 苔が生える割合(0..1)。岩の下の帯と端に多く、上の方と中央は少ない
-float bandAmt(float2 p, float2 sz, float dp, float seed) {
-    float2 uv = p / sz;
-    float n1 = fbm(p / (45.0 * dp) + seed * 3.1);
-    float mb = smoothstep(0.55, 0.85, uv.y + (n1 - 0.5) * 0.45);
-    float n2 = fbm(p / (35.0 * dp) + seed * 5.3 + 9.0);
-    float ms = smoothstep(0.80, 0.98, abs(uv.x - 0.5) * 2.0 + (n2 - 0.5) * 0.5);
-    return max(mb, ms);
+// 濡れた岩の高さ(0..1 くらい)。s = 粒の細かさの倍率(石の板は浅く細かい)
+float rockH(float2 p, float dpx, float seedv) {
+    // 粒の並びを雑音でゆがめ、溶岩のような不揃いのこぶにする
+    float2 w = float2(vnoise(p / (14.0 * dpx) + seedv), vnoise(p / (14.0 * dpx) + seedv + 9.0)) - 0.5;
+    float2 pw = p + w * 9.0 * dpx;
+    float g1 = granules(pw / (3.6 * dpx) + seedv * 7.0);
+    float g2 = granules(pw / (11.0 * dpx) + seedv * 3.0 + 17.0);
+    float big = fbm(p / (55.0 * dpx) + seedv);
+    float mixv = vnoise(p / (30.0 * dpx) + seedv + 4.0);
+    return (0.20 + 0.25 * mixv) * g1 + 0.45 * g2 + 0.45 * big;
+}
+
+// 濡れた岩肌の色。n = 法線、h = 高さ、ao = 溝の暗さ(0..1、1 が開けた面)
+float3 wetRock(float3 n, float h, float ao, float tint, float glintAmt) {
+    float3 L = normalize(float3(-0.15, -0.6, 0.78));
+    float3 V = float3(0.0, 0.0, 1.0);
+    float3 albedo = mix(float3(0.060, 0.054, 0.050), float3(0.112, 0.104, 0.096), tint);
+    float diff = max(dot(n, L), 0.0);
+    float3 col = albedo * (0.35 + 1.1 * diff) * ao;
+    // 濡れたつや: 粒の頂上の小さな白い点
+    float3 Hv = normalize(L + V);
+    float spec = pow(max(dot(n, Hv), 0.0), 140.0);
+    col += float3(0.90, 0.90, 0.86) * spec * glintAmt * ao * smoothstep(0.45, 0.85, h);
+    // 曇天の空の映り込み(広く淡い)
+    float sky = pow(max(dot(n, normalize(float3(0.0, -0.35, 0.94))), 0.0), 10.0);
+    col += float3(0.40, 0.42, 0.42) * sky * 0.10;
+    return col;
 }
 """
 
-    /**
-     * ROCK: 画面全体の背景(静止画)。
-     * 上ほど苔庭がぼけ、下と端には苔が這う。中央は部品が乗るので、模様は落ち着いた暗さ。
-     */
     const val ROCK = COMMON + """
+// ---- ROCK: 画面全体の背景。雨に濡れた黒い岩、端と下に這う苔、上ほど奥でぼけた苔庭 ----
 uniform float2 size;
 uniform float dp;
 uniform float seed;
-// ぼけが消えてくっきりする位置(画面の高さに対する 0..1)
 uniform float focus;
+
+// 苔の生える場所(0..1)。画面の下と左右の端に多く、中央(部品が乗る所)には生えない
+float mossField(float2 p, float2 uv) {
+    float n = fbm(p / (70.0 * dp) + seed * 4.3 + 2.0);
+    float edge = max(smoothstep(0.66, 1.0, uv.y), 0.75 * smoothstep(0.84, 1.0, abs(uv.x - 0.5) * 2.0) * smoothstep(0.2, 0.6, uv.y));
+    float centre = (1.0 - smoothstep(0.30, 0.42, abs(uv.x - 0.5))) * (1.0 - smoothstep(0.24, 0.34, abs(uv.y - 0.52)));
+    float n2 = fbm(p / (24.0 * dp) + seed * 7.1 + 5.0);
+    return clamp(edge * 0.62 + (n - 0.5) * 1.3 + (n2 - 0.5) * 0.35 - centre * 0.7 + 0.12, 0.0, 1.0);
+}
+
+// 杉の枯れ葉(細い枝に小さな鱗片)。a = 始点、b = 終点
+float cedarTwig(float2 p, float2 a, float2 b) {
+    float2 pa = p - a;
+    float2 ba = b - a;
+    float t = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    float2 off = pa - ba * t;
+    float d = length(off);
+    float along = t * length(ba) / (1.6 * dp);
+    float scale = 0.5 + 0.5 * cos(along * TAU);
+    float w = (0.6 + 1.0 * scale) * dp * (1.0 - 0.5 * t);
+    return 1.0 - smoothstep(w * 0.6, w, d);
+}
 
 half4 main(float2 p) {
     float2 uv = p / size;
     float2 q = p + seed * float2(53.1, 27.7);
 
-    // ---- 岩肌: 粒の凹凸から法線を作り、左上からの光で陰影 ----
-    float h0 = surfH(q, dp);
-    float hx = surfH(q + float2(1.0, 0.0), dp);
-    float hy = surfH(q + float2(0.0, 1.0), dp);
-    float3 n = normalize(float3(-(hx - h0) * 6.0 * dp, -(hy - h0) * 6.0 * dp, 1.0));
-    float3 L = normalize(float3(-0.45, -0.6, 0.66));
-    float diff = max(dot(n, L), 0.0);
-    float3 albedo = mix(float3(0.05, 0.047, 0.045), float3(0.12, 0.105, 0.095), h0);
-    float3 col = albedo * (0.3 + 0.9 * diff);
+    // ぼけの強さ: 画面の上(奥)ほど強い。focus より下はくっきり
+    float blur = 1.0 - smoothstep(focus * 0.25, focus, uv.y);
 
-    // 濡れたつや(まだらに光る鏡面反射)
-    float3 H = normalize(L + float3(0.0, 0.0, 1.0));
-    float wet = smoothstep(0.42, 0.75, fbm(q / (30.0 * dp)));
-    col += float3(0.45, 0.5, 0.46) * pow(max(dot(n, H), 0.0), 40.0) * wet * 0.5;
+    // ---- 岩肌(くっきり) ----
+    float e = 0.8 * dp;
+    float h0 = rockH(q, dp, seed);
+    float hx = rockH(q + float2(e, 0.0), dp, seed);
+    float hy = rockH(q + float2(0.0, e), dp, seed);
+    float3 n = normalize(float3((h0 - hx) * 2.6, (h0 - hy) * 2.6, 1.0));
+    // 大きな溝(割れ目)
+    float crack = fbm(q / (160.0 * dp) + 31.0);
+    float groove = 0.12 + 0.88 * smoothstep(0.0, 0.05, abs(crack - 0.5) + (vnoise(q / (2.0 * dp)) - 0.5) * 0.02);
+    float ao = clamp(0.35 + 0.9 * h0, 0.0, 1.0) * groove;
+    float tint = fbm(q / (120.0 * dp) + 9.0);
+    float3 col = wetRock(n, h0, ao, tint, 1.3);
 
-    // 濡れた小さな白い点
-    float2 gc = floor(q / (9.0 * dp));
-    float grnd = hash21(gc + 1.3);
-    float2 gp = (gc + 0.2 + 0.6 * hash22(gc + 1.3)) * 9.0 * dp;
-    float rr = (0.22 + 0.3 * fract(grnd * 7.7)) * dp;
-    float spot = (1.0 - smoothstep(rr * 0.2, rr, length(q - gp))) * step(0.85, grnd);
-    col = mix(col, float3(0.85, 0.9, 0.86), spot * 0.8);
+    // 地衣類の白っぽい斑点(まばら)
+    float2 lc = floor(q / (34.0 * dp));
+    float2 lctr = (lc + 0.2 + 0.6 * hash22(lc + 5.5)) * 34.0 * dp;
+    float lr = (1.5 + 3.5 * hash21(lc + 2.2)) * dp;
+    float lich = (1.0 - smoothstep(lr * 0.6, lr, length(q - lctr) + (vnoise(q / (0.9 * dp)) - 0.5) * 1.6 * dp))
+        * step(0.93, hash21(lc + 9.9));
+    col = mix(col, float3(0.62, 0.64, 0.58) * (0.55 + 0.45 * h0), lich * 0.85);
 
-    // 岩の溝(ひび): ボロノイの境目を黒くする
-    float2 cq = q / (28.0 * dp);
-    float2 ci = floor(cq);
-    float f1 = 9.0;
-    float f2 = 9.0;
-    for (int j = -1; j <= 1; j++) {
-        for (int i = -1; i <= 1; i++) {
-            float2 cc = ci + float2(float(i), float(j));
-            float2 pt = cc + hash22(cc + 3.7);
-            float dd = length(cq - pt);
-            if (dd < f1) {
-                f2 = f1;
-                f1 = dd;
-            } else if (dd < f2) {
-                f2 = dd;
-            }
-        }
+    // ---- 苔の群れ ----
+    float m = mossField(p, uv);
+    float mE = 4.0 * dp;
+    float mx = mossField(p + float2(mE, 0.0), (p + float2(mE, 0.0)) / size);
+    float my = mossField(p + float2(0.0, mE), (p + float2(0.0, mE)) / size);
+    // 群れの盛り上がり(クッション)。群れの縁ほど急に下がる
+    float dome = smoothstep(0.5, 0.75, m);
+    // 群れの中の小さなクッション(株の塊)。塊の上は明るく、塊の間は深い谷
+    float cE = 2.5 * dp;
+    float2 cq = q / (24.0 * dp) + 13.0;
+    float c0 = granules(cq);
+    float cx = granules(cq + float2(cE, 0.0) / (24.0 * dp));
+    float cy = granules(cq + float2(0.0, cE) / (24.0 * dp));
+    float3 mn = normalize(float3((m - mx) * 7.0 + (c0 - cx) * 2.2, (m - my) * 7.0 + (c0 - cy) * 2.2, 1.0));
+    float lam = clamp(max(dot(mn, normalize(float3(0.0, -0.6, 0.8))), 0.0) * (0.35 + 0.45 * c0) + 0.1 * dome, 0.0, 1.0);
+    // 群れの縁では株がまばらに(岩の上に小さな株が点在)
+    float density = smoothstep(0.38, 0.58, m);
+    float4 mc = mossColor(p, dp, seed, lam, density, mix(0.7, 1.0, dome));
+    col = mix(col, mc.rgb, mc.a * smoothstep(0.36, 0.5, m));
+    // 苔の縁の根元に落ちる陰
+    col *= 1.0 - 0.35 * (smoothstep(0.30, 0.48, m) - smoothstep(0.48, 0.62, m));
+
+    // 杉の枯れ葉(画面の下半分に3本)
+    for (int k = 0; k < 3; k++) {
+        float kk = float(k);
+        float2 r0 = hash22(float2(kk * 7.3 + seed * 3.0, 1.9));
+        float2 a = float2(0.08 + 0.84 * r0.x, 0.60 + 0.36 * r0.y) * size;
+        float ang = hash21(float2(kk, seed + 4.0)) * TAU;
+        float len = (22.0 + 18.0 * hash21(float2(kk + 2.0, 8.0))) * dp;
+        float2 b = a + float2(cos(ang), sin(ang)) * len;
+        float tw = cedarTwig(p, a, b);
+        col = mix(col, float3(0.60, 0.36, 0.22) * (0.75 + 0.25 * vnoise(p / dp)), tw * 0.95);
     }
-    float crack = 1.0 - smoothstep(0.0, 0.025, f2 - f1);
-    col *= 1.0 - 0.45 * crack;
 
-    // 地衣類の白っぽい斑
-    float lich = smoothstep(0.72, 0.8, fbm(q / (16.0 * dp) + 5.0));
-    col = mix(col, float3(0.40, 0.43, 0.37), lich * 0.35);
+    // ---- 奥の苔庭(ぼけ) ----
+    float g = fbm(p / (150.0 * dp) + seed * 2.0 + 40.0);
+    float g2 = fbm(p / (60.0 * dp) + 77.0);
+    float3 garden = mix(float3(0.36, 0.37, 0.35), float3(0.46, 0.55, 0.22), smoothstep(0.42, 0.62, g));
+    garden = mix(garden, float3(0.16, 0.17, 0.14), smoothstep(0.5, 0.8, g2) * 0.45);
+    garden *= 0.70 + 0.55 * (1.0 - uv.y / max(focus, 0.01));
+    // 丸いぼけ(水滴の光)
+    float2 bc = floor(p / (70.0 * dp));
+    float2 bctr = (bc + 0.25 + 0.5 * hash22(bc + 1.7)) * 70.0 * dp;
+    float br = (6.0 + 10.0 * hash21(bc + 6.1)) * dp;
+    float bok = (1.0 - smoothstep(br * 0.75, br, length(p - bctr))) * step(0.78, hash21(bc + 4.4));
+    garden += float3(0.55, 0.60, 0.45) * bok * 0.18;
 
-    // 杉の枯れ葉(赤茶の細い枝)
-    float2 ta = float2(0.60, 0.66) * size;
-    float2 tb = float2(0.67, 0.74) * size;
-    float2 pa = p - ta;
-    float2 ba = tb - ta;
-    float th = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-    float tw = length(pa - ba * th);
-    float twig = 1.0 - smoothstep(0.5 * dp, 0.9 * dp, tw);
-    col = mix(col, float3(0.42, 0.20, 0.11), twig * 0.85);
+    col = mix(col, garden, blur);
+    // ぼけと岩のあいだ(focus の少し下)は、苔庭の光で少しかすむ
+    col = mix(col, garden * 0.6, (1.0 - smoothstep(focus, focus + 0.12, uv.y)) * (1.0 - blur) * 0.35);
 
-    // ---- 苔の帯(下と端): 株が密集し、すき間は黒緑 ----
-    float cs = 3.6 * dp;
-    float rt = 2.0 * dp;
-    float2 q0 = p / cs;
-    float2 cell0 = floor(q0);
-    float bestS = 0.0;
-    float bestTip = 0.0;
-    float bestRnd = 0.0;
-    for (int j = -1; j <= 1; j++) {
-        for (int i = -1; i <= 1; i++) {
-            float2 cell = cell0 + float2(float(i), float(j));
-            float rnd = hash21(cell + 0.5 + seed * 7.1);
-            float2 ctr = cell + 0.15 + 0.7 * hash22(cell + 0.5 + seed * 7.1);
-            float amt = bandAmt(ctr * cs, size, dp, seed);
-            float keep = step(rnd, clamp(amt * 1.2 - 0.1, 0.0, 1.0));
-            float2 v = q0 - ctr;
-            float rr2 = length(v) * cs / rt;
-            float2 st = tuftStar(rr2, atan(v.y, v.x), rnd);
-            float s = st.x * keep;
-            if (s > bestS) {
-                bestS = s;
-                bestTip = st.y;
-                bestRnd = rnd;
-            }
-        }
-    }
-    float mAmt = bandAmt(p, size, dp, seed);
-    float3 mossDark = float3(0.03, 0.06, 0.02);
-    col = mix(col, mossDark, mAmt * 0.3);
-    col = mix(col, leafColor(bestTip, bestRnd) * (0.8 + 0.3 * diff), clamp(bestS, 0.0, 1.0));
-
-    // ---- ぼけ: 上の方は低い周波数だけの苔庭(明るい緑と灰色の柔らかい斑) ----
-    float bl = smoothstep(0.0, 0.45, max(focus - uv.y, 0.0));
-    float bk = fbm(q / (40.0 * dp) + 2.0);
-    float3 blurCol = mix(float3(0.26, 0.28, 0.25), float3(0.34, 0.58, 0.15), smoothstep(0.35, 0.7, bk));
-    blurCol = mix(blurCol, float3(0.52, 0.76, 0.24), smoothstep(0.6, 0.8, bk) * 0.6);
-    col = mix(col, blurCol, bl);
-
-    return half4(half3(col), 1.0);
+    return half4(half3(clamp(col, 0.0, 1.0)), 1.0);
 }
 """
 
-    /**
-     * MOSS: 苔のクッション(主ボタン・選択中)。
-     * 角丸長方形の形の中に株が密集する。縁は株がまばらにほつれ、pad の範囲まで株がはみ出す。
-     * 中央は文字が読めるよう、明るく比較的なめらか。
-     */
     const val MOSS = COMMON + """
+// ---- MOSS: 苔のクッション(主ボタン・選択中)。星形の株が何層にも重なった、ふかふかの苔 ----
 uniform float2 size;
 uniform float dp;
 uniform float seed;
@@ -243,73 +306,50 @@ uniform float radius;
 uniform float pad;
 uniform float press;
 
+// クッションの高さ(px)。縁から内側へ盛り上がるドームに、株の塊の凹凸を足す
+float cushionH(float2 p) {
+    float d = -sdRoundRect(p, size, radius);
+    float s = clamp(d / (12.0 * dp), 0.0, 1.0);
+    float dome = 1.0 - (1.0 - s) * (1.0 - s);
+    float clump = fbm(p / (16.0 * dp) + seed * 3.0 + 5.0);
+    return dome * 9.0 * dp + clump * 7.0 * dp * (1.0 - 0.5 * press);
+}
+
 half4 main(float2 p) {
-    float2 c = size * 0.5;
-    float rad = min(radius, min(size.x, size.y) * 0.5);
-    float d = sdRoundRect(p, size, rad);
+    float d0 = sdRoundRect(p, size, radius);
     // 縁のほつれ: 輪郭を雑音でゆがめる
     float rag = (vnoise(p / (3.0 * dp) + seed * 13.7) - 0.5) * 3.0 * dp;
-    float d2 = d + rag;
-    float body = 1.0 - smoothstep(-0.6 * dp, 0.6 * dp, d2);
-    float depth = clamp(-d2 / (5.0 * dp), 0.0, 1.0);
+    float body = 1.0 - smoothstep(-1.5 * dp, 0.0, d0 + rag);
 
-    // ---- 株: 近い 3x3 マスの株から、いちばん濃いものを選ぶ ----
-    float cs = 3.6 * dp;
-    float rt = 2.0 * dp;
-    float fr = max(pad, 1.0);
-    float2 q0 = p / cs;
-    float2 cell0 = floor(q0);
-    float bestS = 0.0;
-    float bestTip = 0.0;
-    float bestRnd = 0.0;
-    for (int j = -1; j <= 1; j++) {
-        for (int i = -1; i <= 1; i++) {
-            float2 cell = cell0 + float2(float(i), float(j));
-            float rnd = hash21(cell + 0.5 + seed * 19.3);
-            float2 ctr = cell + 0.15 + 0.7 * hash22(cell + 0.5 + seed * 19.3);
-            // 外へ行くほど株は減る。縁の外は pad の範囲だけ
-            float dc = sdRoundRect(ctr * cs, size, rad);
-            float keep = step(rnd, clamp(1.0 - dc / fr, 0.0, 1.0));
-            float2 v = q0 - ctr;
-            float rr = length(v) * cs / rt;
-            float2 st = tuftStar(rr, atan(v.y, v.x), rnd);
-            float s = st.x * keep;
-            if (s > bestS) {
-                bestS = s;
-                bestTip = st.y;
-                bestRnd = rnd;
-            }
-        }
-    }
+    float e = dp;
+    float hx = cushionH(p + float2(e, 0.0)) - cushionH(p - float2(e, 0.0));
+    float hy = cushionH(p + float2(0.0, e)) - cushionH(p - float2(0.0, e));
+    float3 nrm = normalize(float3(-hx / (2.0 * e), -hy / (2.0 * e), 1.0));
+    float lam = max(dot(nrm, normalize(float3(0.0, -0.6, 0.8))), 0.0);
 
-    // ---- 色: 根元の黒緑のすき間に、株が明るく立つ ----
-    float cover = clamp(bestS, 0.0, 1.0);
-    float3 gap = mix(float3(0.01, 0.025, 0.008), float3(0.05, 0.12, 0.02), vnoise(p / (1.2 * dp) + seed * 5.0));
-    float3 texCol = mix(gap, leafColor(bestTip, bestRnd), cover);
-    texCol *= mix(0.5, 1.0, depth) * mix(1.08, 0.85, clamp(p.y / size.y, 0.0, 1.0));
+    // 縁の外へ行くほど株はまばらで小さい。pad の端では消える
+    float outside = clamp(d0 / max(pad, 1.0), 0.0, 1.0);
+    float density = 1.0 - outside;
+    float shrink = mix(1.0, 0.6, outside) * mix(1.0, 0.85, press);
+    float4 mc = mossColor(p, dp, seed, lam, density, shrink);
+    float3 col = mc.rgb;
+    col *= mix(0.72, 1.0, smoothstep(0.0, 10.0 * dp, -d0));
+    col *= 1.0 - 0.15 * press;
 
-    // 中央は明るい黄緑でなめらか(模様は弱い)。文字が読めるように
-    float ex = abs(p.x - c.x) / (size.x * 0.5);
-    float ey = abs(p.y - c.y) / (size.y * 0.5);
-    float edgeness = smoothstep(0.35, 0.95, max(ex * 0.8, ey));
-    float3 calm = mix(float3(0.70, 0.90, 0.34), float3(0.78, 0.95, 0.40), vnoise(p / (18.0 * dp) + seed * 3.0));
-    calm *= 0.92 + 0.08 * cover;
-    float3 col = mix(calm, texCol, mix(0.3, 1.0, edgeness));
+    // 中央の帯: 模様のコントラストを弱め、明るさを中間に寄せる(黒緑の文字を読みやすく)
+    float ay = abs(p.y - size.y * 0.5) / size.y;
+    float ax = smoothstep(0.0, 18.0 * dp, min(p.x, size.x - p.x));
+    float wb = (1.0 - smoothstep(0.22, 0.36, ay)) * ax;
+    float3 meanC = mossRamp(0.56) * (1.0 - 0.15 * press);
+    col = mix(col, mix(meanC, col, 0.45), wb * 0.9);
 
-    // 押した状態: 少し暗く、平たくつぶれる
-    col *= 1.0 - 0.22 * press;
-
-    float a = clamp(max(body, cover), 0.0, 1.0);
-    return half4(half3(col * a), half(a));
+    float a = clamp(max(body, mc.a * density), 0.0, 1.0);
+    return half4(half3(clamp(col, 0.0, 1.0) * a), half(a));
 }
 """
 
-    /**
-     * STONE: 磨いた濡れ石の板。暗い細かな粒の石肌、上の縁に柔らかいつや。
-     * sunken=1 なら彫り込んだ溝になり、moss で縁(主に左上と下)に小さな苔が生える。
-     * 中央は文字が読めるよう暗く、模様は控えめ。
-     */
     const val STONE = COMMON + """
+// ---- STONE: 磨いた濡れ石の板(名刺・副ボタン・入力欄・ダイアログ)。縁に苔が生える ----
 uniform float2 size;
 uniform float dp;
 uniform float seed;
@@ -319,88 +359,59 @@ uniform float press;
 uniform float sunken;
 uniform float moss;
 
+// 自然石らしく、輪郭を少し波打たせた距離
+float stoneD(float2 p) {
+    float wob = (fbm(p / (40.0 * dp) + seed * 5.0) - 0.5) * 3.0 * dp;
+    return sdRoundRect(p, size, radius) + wob * (1.0 - sunken);
+}
+
+// 面の高さ: 縁から 8dp で丸く落ちる面取り(溝なら逆)+ 浅い石肌
+float slabH(float2 p) {
+    float d = -stoneD(p);
+    float s = clamp(d / (8.0 * dp), 0.0, 1.0);
+    float bevel = sqrt(1.0 - (1.0 - s) * (1.0 - s));
+    float dir = mix(1.0, -1.0, sunken);
+    return dir * bevel * 6.0 * dp + rockH(p, dp, seed) * 0.9 * dp;
+}
+
 half4 main(float2 p) {
+    float d0 = stoneD(p);
+    float aa = 1.0 - smoothstep(-0.5, 0.5, d0);
+
+    float e = 0.8 * dp;
+    float h0 = slabH(p);
+    float hx = slabH(p + float2(e, 0.0));
+    float hy = slabH(p + float2(0.0, e));
+    float3 n = normalize(float3((h0 - hx) / e, (h0 - hy) / e, 1.0));
+
+    // 中央は文字が読めるよう、明るさの揺らぎを小さく
+    float inner = smoothstep(4.0 * dp, 16.0 * dp, -d0);
+    float r = rockH(p, dp, seed);
+    float3 col = wetRock(n, r, 0.75 + 0.25 * r, 0.45 + 0.3 * fbm(p / (60.0 * dp) + seed), mix(1.3, 0.8, inner));
+    col = mix(col, float3(0.085, 0.078, 0.072) + (col - float3(0.085, 0.078, 0.072)) * 0.45, inner * 0.6);
+
+    // 曇天の空の映り込み: 上側に斜めの柔らかいつや(溝には無い)
     float2 uv = p / size;
-    float rad = min(radius, min(size.x, size.y) * 0.5);
-    float d = sdRoundRect(p, size, rad);
-    float body = 1.0 - smoothstep(-0.5, 0.5, d);
-    float din = -d;
+    float band = smoothstep(0.0, 0.25, uv.y) * (1.0 - smoothstep(0.25, 0.5, uv.y + (uv.x - 0.5) * 0.25));
+    col += float3(0.32, 0.35, 0.37) * band * 0.10 * (1.0 - sunken) * (1.0 - 0.6 * press);
+    // 溝は全体に暗い。押すと少し暗く(沈む)
+    col *= (1.0 - 0.35 * sunken) * (1.0 - 0.08 * press);
 
-    // 中央ほど模様を控えめに
-    float ex = abs(p.x - size.x * 0.5) / (size.x * 0.5);
-    float ey = abs(p.y - size.y * 0.5) / (size.y * 0.5);
-    float edgeness = smoothstep(0.4, 1.0, max(ex * 0.8, ey));
-    float shade = mix(0.45, 1.0, edgeness);
-
-    // ---- 石肌: 粒の凹凸と左上からの光 ----
-    float2 q = p + seed * float2(41.3, 11.9);
-    float h0 = surfH(q, dp);
-    float hx = surfH(q + float2(1.0, 0.0), dp);
-    float hy = surfH(q + float2(0.0, 1.0), dp);
-    float3 n = normalize(float3(-(hx - h0) * 6.0 * dp, -(hy - h0) * 6.0 * dp, 1.0));
-    float3 L = normalize(float3(-0.45, -0.6, 0.66));
-    float diff = max(dot(n, L), 0.0);
-    float3 albedo = mix(float3(0.14, 0.142, 0.138), float3(0.27, 0.27, 0.262), h0);
-    float3 col = albedo * (0.3 + 0.9 * mix(0.5, diff, shade));
-    // 中央は暗くして、淡い文字を読みやすくする
-    col *= mix(0.55, 1.0, edgeness);
-
-    // 濡れたつや: 上の方ほど強い
-    float3 H = normalize(L + float3(0.0, 0.0, 1.0));
-    float wetTop = 1.0 - smoothstep(0.0, 0.5, uv.y);
-    col += float3(0.5, 0.55, 0.52) * pow(max(dot(n, H), 0.0), 30.0) * (0.25 + 0.6 * wetTop) * 0.5 * shade;
-
-    // 上の縁の光の帯と、縁の下の暗がり
-    float rim = exp(-din / (1.5 * dp)) * (0.5 + 0.5 * (1.0 - uv.y));
-    col += float3(0.35, 0.38, 0.36) * rim * 0.3;
-    float lowT = smoothstep(0.5, 1.0, uv.y);
-    col *= mix(1.0, 0.6, lowT * (1.0 - smoothstep(0.0, 7.0 * dp, din)));
-    col *= mix(0.7, 1.0, smoothstep(0.0, 4.0 * dp, din));
-
-    // 彫り込み: 上と左の内側に影、縁に溝
-    float sh = (1.0 - smoothstep(0.0, 5.0 * dp, p.y)) + (1.0 - smoothstep(0.0, 5.0 * dp, p.x)) * 0.6;
-    col *= 1.0 - 0.8 * sunken * clamp(sh, 0.0, 1.0);
-    float groove = 1.0 - smoothstep(0.0, 1.2 * dp, abs(din - 1.5 * dp));
-    col *= 1.0 - 0.6 * sunken * groove;
-    col *= 1.0 - 0.2 * sunken;
-
-    // 押した状態: 少し暗く
-    col *= 1.0 - 0.14 * press;
-
-    // ---- 苔: 縁の帯に、左と下の角から生える小さな株 ----
-    float cs = 3.6 * dp;
-    float rt = 2.0 * dp;
-    float2 q0 = p / cs;
-    float2 cell0 = floor(q0);
-    float bestS = 0.0;
-    float bestTip = 0.0;
-    float bestRnd = 0.0;
-    for (int j = -1; j <= 1; j++) {
-        for (int i = -1; i <= 1; i++) {
-            float2 cell = cell0 + float2(float(i), float(j));
-            float rnd = hash21(cell + 0.5 + seed * 23.9);
-            float2 ctr = cell + 0.15 + 0.7 * hash22(cell + 0.5 + seed * 23.9);
-            float2 cp = ctr * cs;
-            float dc = sdRoundRect(cp, size, rad);
-            float2 uc = cp / size;
-            float cw = max((1.0 - smoothstep(0.0, 0.35, uc.x)) * (0.4 + 0.6 * (1.0 - smoothstep(0.0, 0.3, uc.y))), smoothstep(0.75, 1.0, uc.y));
-            float keep = step(-1.5 * dp, dc) * step(dc, 3.0 * dp) * step(rnd, moss * cw);
-            float2 v = q0 - ctr;
-            float rr = length(v) * cs / rt;
-            float2 st = tuftStar(rr, atan(v.y, v.x), rnd);
-            float s = st.x * keep;
-            if (s > bestS) {
-                bestS = s;
-                bestTip = st.y;
-                bestRnd = rnd;
-            }
-        }
+    float a = aa;
+    // 縁に生える苔: 左上の角と下の辺を中心に、縁の帯の中だけ
+    if (moss > 0.001 && d0 > -18.0 * dp) {
+        float band2 = smoothstep(-16.0 * dp, -4.0 * dp, d0) * (1.0 - smoothstep(0.0, pad * 0.9, d0));
+        float pref = max(max(1.0 - smoothstep(0.0, 0.45, length(uv - float2(0.0, 0.0))), smoothstep(0.75, 1.0, uv.y)),
+                         0.6 * smoothstep(0.85, 1.0, uv.x) * smoothstep(0.4, 0.9, uv.y));
+        float f = fbm(p / (26.0 * dp) + seed * 9.0);
+        float m = clamp(band2 * (pref * 1.1 + (f - 0.55) * 1.8) * moss * 1.6, 0.0, 1.0);
+        float lam = 0.55 + 0.35 * (f - 0.5) + 0.25 * smoothstep(-8.0 * dp, 0.0, -d0);
+        float4 mc = mossColor(p, dp, seed + 3.0, clamp(lam, 0.0, 1.0), smoothstep(0.2, 0.7, m), mix(0.65, 0.95, m));
+        float mm = mc.a * smoothstep(0.15, 0.5, m);
+        col = mix(col, mc.rgb, mm);
+        a = max(a, mm);
     }
-    float cover = clamp(bestS, 0.0, 1.0);
-    col = mix(col, leafColor(bestTip, bestRnd) * (0.6 + 0.4 * diff), cover);
-
-    float a = clamp(max(body, cover), 0.0, 1.0);
-    return half4(half3(col * a), half(a));
+    return half4(half3(clamp(col, 0.0, 1.0) * a), half(a));
 }
 """
 }
