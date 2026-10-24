@@ -37,9 +37,10 @@ half4 main(float2 p) {
     float PI2 = 6.28318;
 
     // 上から下へ: 明るい琥珀 → 琥珀 → 奥の暗い琥珀
-    float3 hi = toLin(amberHi);
-    float3 mid = toLin(amber);
-    float3 deep = toLin(amberDeep);
+    // 全体をクリーム寄りに明るく(#FFDEAA→#ECB272。奥は暗い琥珀)
+    float3 hi = toLin(amberHi) * 1.15;
+    float3 mid = toLin(amber) * 1.15;
+    float3 deep = toLin(amberDeep) * 1.1;
     float3 col = mix(mid, hi, smoothstep(0.55, 0.0, v));
     col = mix(col, deep, smoothstep(0.45, 1.0, v));
 
@@ -48,9 +49,10 @@ half4 main(float2 p) {
     float cellX = 22.0 * dp;
     float dx = (fract(p.x / cellX + 0.5) - 0.5) * cellX;
     float dyc = p.y - ceilY;
-    float lamp = exp(-(dx * dx + dyc * dyc) / (1.3 * dp * 1.3 * dp));
-    float ceilBand = exp(-pow(dyc / (3.0 * dp), 2.0)) * 0.25;
-    col += toLin(amberHi) * (lamp * 1.1 + ceilBand) * smoothstep(0.3, 0.0, v);
+    // 点のにじみは半径を大きく(2.6dp)、中心は HDR で白の 2 倍近くまで(通常の画面では白で止まる)
+    float lamp = exp(-(dx * dx + dyc * dyc) / (2.6 * dp * 2.6 * dp));
+    float ceilBand = exp(-pow(dyc / (4.0 * dp), 2.0)) * 0.35;
+    col += toLin(half4(1.0, 0.95, 0.80, 1.0)) * (lamp * 2.2 + ceilBand) * smoothstep(0.3, 0.0, v);
 
     // 縦の薄いカーテン: 柔らかい縦縞(振幅 11%。見本のひだに合わせて SPEC の 6% より強め)
     // 布のひだの間隔はまばら。x をゆるく歪ませて周期を不揃いにする(約 74dp と 27dp のうねりを重ねる)
@@ -62,7 +64,7 @@ half4 main(float2 p) {
     float cell = size.x / 4.0;
     float m = abs(fract(p.x / cell + 0.5) - 0.5) * cell;
     float bar = 1.0 - smoothstep(0.35 * dp, 0.5 * dp + 0.5, m);
-    col = mix(col, toLin(mullion), 0.3 * bar);
+    col = mix(col, toLin(mullion), 0.45 * bar);
 
     // 青海波の点描(不透明度 6%。扇の半径 10dp)
     float rowH = 10.0 * dp;

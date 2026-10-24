@@ -1,6 +1,7 @@
 package com.example.businesscard.ui.kinu
 
 import android.graphics.RuntimeShader
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,6 +15,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.toArgb
@@ -69,16 +71,30 @@ fun KinuScaffold(
     bottomBar: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
+    val c = KinuTheme.colors
     KinuBackground(modifier) {
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing),
             containerColor = Color.Transparent,
-            contentColor = KinuTheme.colors.champagne,
+            contentColor = c.champagne,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = topBar,
-            bottomBar = bottomBar,
+            // 操作の後ろに、透明から塔の色へ薄く落ちる幕を敷き、足元の帯が操作の後ろで少し沈むように見せる
+            bottomBar = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, c.tower.copy(alpha = 0.7f)),
+                            ),
+                        ),
+                ) {
+                    bottomBar()
+                }
+            },
             content = content,
         )
     }

@@ -262,18 +262,21 @@ half4 main(float2 p) {
     float amt = line * on * (0.92 + 0.08 * sin(PI2 * 1.5 * u + seed));
 
     // ---- 面の明るさ: 上は赤茶の陰、下へ向かって琥珀の照り返しで明るい。上 20% で縁が丸く回り込む ----
+    // 面の大部分は見本の光る帯(淡い金・わずかにピンク寄り #CC9871〜#F3CAAE)。陰の色は細い溝だけに使う
     float3 shade = toLin(goldShade);
     float3 lit = toLin(goldLit);
-    float wrap = exp(-max(v, 0.0) * H / 5.0);            // 縁の回り込みの明るさ(上の数 dp)
-    float3 base = mix(shade, lit, smoothstep(0.7, 1.0, v) * 0.8);
-    base += shade * 0.35 * wrap;
+    float3 bright = toLin(half4(0.9529, 0.7922, 0.6824, 1.0));   // #F3CAAE
+    float3 face = mix(lit, bright, smoothstep(0.2, 0.9, v));
+    // 縁の回り込み: 上 20% だけ陰へ寄せる(面の大部分は明るいまま)
+    float wrap = exp(-max(v, 0.0) * H / 4.0);
+    float3 base = mix(face, shade, 0.35 * wrap);
+    base *= 1.3;                                          // 全体の平均の明るさを 1.5 倍程度に(白へ飛ばないよう 1.3 で止める)
 
-    // 緩い溝: 下へ向かってゆるく凹む(うねりつき)
+    // 細い溝: 下寄りに 1 本だけ、狭く。最暗部も goldShade より暗くしない(赤茶の彩度を保つ)
     float gv = 0.62 + 0.05 * sin(PI2 * u + seed * 2.3);
-    float groove = exp(-pow((v - gv) * H / 2.6, 2.0));
-    // 溝は暗くしすぎず、赤茶の彩度を保つ(輝度はほぼ保ったまま赤へ寄せる。灰色に転ばない)
-    float3 warmGroove = base * float3(1.16, 0.96, 0.76);
-    base = mix(base, warmGroove, 0.5 * groove);
+    float groove = exp(-pow((v - gv) * H / 0.9, 2.0));
+    float3 warmGroove = max(base * float3(0.84, 0.66, 0.56), shade * 1.5);
+    base = mix(base, warmGroove, 0.6 * groove);
 
     // ---- つや: 横に伸びるヘアライン。うねりは 0.5〜1.5 周期。指の x へ寄せる ----
     bool touchOn = touch.x >= 0.0;
@@ -345,9 +348,10 @@ half4 main(float2 p) {
     float PI2 = 6.28318;
 
     // 上から下へ: 明るい琥珀 → 琥珀 → 奥の暗い琥珀
-    float3 hi = toLin(amberHi);
-    float3 mid = toLin(amber);
-    float3 deep = toLin(amberDeep);
+    // 全体をクリーム寄りに明るく(#FFDEAA→#ECB272。奥は暗い琥珀)
+    float3 hi = toLin(amberHi) * 1.15;
+    float3 mid = toLin(amber) * 1.15;
+    float3 deep = toLin(amberDeep) * 1.1;
     float3 col = mix(mid, hi, smoothstep(0.55, 0.0, v));
     col = mix(col, deep, smoothstep(0.45, 1.0, v));
 
@@ -356,9 +360,10 @@ half4 main(float2 p) {
     float cellX = 22.0 * dp;
     float dx = (fract(p.x / cellX + 0.5) - 0.5) * cellX;
     float dyc = p.y - ceilY;
-    float lamp = exp(-(dx * dx + dyc * dyc) / (1.3 * dp * 1.3 * dp));
-    float ceilBand = exp(-pow(dyc / (3.0 * dp), 2.0)) * 0.25;
-    col += toLin(amberHi) * (lamp * 1.1 + ceilBand) * smoothstep(0.3, 0.0, v);
+    // 点のにじみは半径を大きく(2.6dp)、中心は HDR で白の 2 倍近くまで(通常の画面では白で止まる)
+    float lamp = exp(-(dx * dx + dyc * dyc) / (2.6 * dp * 2.6 * dp));
+    float ceilBand = exp(-pow(dyc / (4.0 * dp), 2.0)) * 0.35;
+    col += toLin(half4(1.0, 0.95, 0.80, 1.0)) * (lamp * 2.2 + ceilBand) * smoothstep(0.3, 0.0, v);
 
     // 縦の薄いカーテン: 柔らかい縦縞(振幅 11%。見本のひだに合わせて SPEC の 6% より強め)
     // 布のひだの間隔はまばら。x をゆるく歪ませて周期を不揃いにする(約 74dp と 27dp のうねりを重ねる)
@@ -370,7 +375,7 @@ half4 main(float2 p) {
     float cell = size.x / 4.0;
     float m = abs(fract(p.x / cell + 0.5) - 0.5) * cell;
     float bar = 1.0 - smoothstep(0.35 * dp, 0.5 * dp + 0.5, m);
-    col = mix(col, toLin(mullion), 0.3 * bar);
+    col = mix(col, toLin(mullion), 0.45 * bar);
 
     // 青海波の点描(不透明度 6%。扇の半径 10dp)
     float rowH = 10.0 * dp;

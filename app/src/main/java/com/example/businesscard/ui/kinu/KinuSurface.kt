@@ -1,6 +1,8 @@
 package com.example.businesscard.ui.kinu
 
+import android.graphics.BlurMaskFilter
 import android.graphics.RuntimeShader
+import android.graphics.Paint as NativePaint
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -20,11 +22,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.addOutline
+import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -152,8 +159,18 @@ fun Modifier.kinuRibbon(
     val c = KinuTheme.colors
     val hdr = LocalGlowHeadroom.current
     val shader = remember { RuntimeShader(KinuShaders.RIBBON) }
-    return this.clip(shape).drawWithCache {
+    // 形の外へ落ちる接地の影を切らないため、clip せず、面だけを形で切り抜く
+    return this.drawWithCache {
         val brush = ShaderBrush(shader)
+        val path = Path().apply { addOutline(shape.createOutline(size, layoutDirection, this@drawWithCache)) }
+        val native = path.asAndroidPath()
+        val shadow = NativePaint(NativePaint.ANTI_ALIAS_FLAG).apply {
+            maskFilter = BlurMaskFilter(8.dp.toPx(), BlurMaskFilter.Blur.NORMAL)
+            color = Color.Black.copy(alpha = 0.55f).toArgb()
+        }
+        val shadowDy = 3.dp.toPx()
+        val rimWidth = 1.dp.toPx()
+        val rimColor = c.ink.copy(alpha = 0.5f)
         shader.setFloatUniform("size", size.width, size.height)
         shader.setFloatUniform("dp", 1.dp.toPx())
         shader.setFloatUniform("hdr", hdr)
@@ -163,11 +180,23 @@ fun Modifier.kinuRibbon(
         shader.setColorUniform("goldDeep", c.goldDeep.toArgb())
         shader.setColorUniform("lineCore", c.lineCore.toArgb())
         onDrawBehind {
-            shader.setFloatUniform("line", line())
-            shader.setFloatUniform("ignite", ignite.value)
-            val t = touch()
-            shader.setFloatUniform("touch", t.x, t.y)
-            drawRect(brush)
+            // 接地の影(下へずらしてぼかす。面の下に隠れる分は見えない)
+            drawIntoCanvas { canvas ->
+                val nc = canvas.nativeCanvas
+                nc.save()
+                nc.translate(0f, shadowDy)
+                nc.drawPath(native, shadow)
+                nc.restore()
+            }
+            clipPath(path) {
+                shader.setFloatUniform("line", line())
+                shader.setFloatUniform("ignite", ignite.value)
+                val t = touch()
+                shader.setFloatUniform("touch", t.x, t.y)
+                drawRect(brush)
+            }
+            // 輪郭の暗い線
+            drawPath(path, rimColor, style = Stroke(rimWidth))
         }
     }
 }
