@@ -9,6 +9,7 @@ import re
 import struct
 
 import skia
+from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.join(HERE, 'src')
@@ -16,7 +17,8 @@ OUT = os.path.join(HERE, 'out')
 TOKENS = os.path.join(HERE, '../../../app/src/main/java/com/example/businesscard/ui/kinu/KinuTokens.kt')
 CS = skia.ColorSpace.MakeSRGB()
 DP = 2.625
-BG = 0x16161A
+PHOTO = '/mnt/user-data/uploads/1000050614.jpg'   # 見本(1449x2576)
+PHOTO_BOX = (322, 960, 1212, 1330)   # 帯と窓が見える所
 
 
 def tokens():
@@ -103,29 +105,31 @@ def clip_round(canvas, w, h, r_dp):
 
 def draw_button(canvas, x, y, w, h, kind, **kw):
     """部品1つを (x, y) に描く。ボタン・入力欄は角丸 14dp、名刺は 22dp。"""
+    hdr = kw.get('hdr', 1.0)
     canvas.save()
     canvas.translate(x, y)
     if kind == 'card':
         clip_round(canvas, w, h, 22)
-        window(canvas, w, h, glow=kw.get('glow', 1.0))
+        window(canvas, w, h, glow=kw.get('glow', 1.0), hdr=hdr)
         lip = 10 * DP
+        # 上下の金の縁(リップ)。下の縁は同じ帯をずらして重ねる
         canvas.save()
         canvas.clipRect(skia.Rect.MakeWH(w, lip), skia.ClipOp.kIntersect, True)
-        ribbon(canvas, w, lip, line=kw.get('line', 1.0), ignite=1.0, seed=0.2)
+        ribbon(canvas, w, lip, line=kw.get('line', 1.0), ignite=1.0, seed=0.2, hdr=hdr)
         canvas.restore()
         canvas.save()
         canvas.translate(0, h - lip)
         canvas.clipRect(skia.Rect.MakeWH(w, lip), skia.ClipOp.kIntersect, True)
-        ribbon(canvas, w, lip, line=kw.get('line', 1.0), ignite=1.0, seed=1.1)
+        ribbon(canvas, w, lip, line=kw.get('line', 1.0), ignite=1.0, seed=1.1, hdr=hdr)
         canvas.restore()
     else:
         clip_round(canvas, w, h, 14)
         if kind == 'gold':
             ribbon(canvas, w, h, line=kw.get('line', 1.0), ignite=1.0,
-                   touch=kw.get('touch', (-1, -1)), seed=kw.get('seed', 0.3))
+                   touch=kw.get('touch', (-1, -1)), seed=kw.get('seed', 0.3), hdr=hdr)
         else:
             night(canvas, w, h, line=kw.get('line', 0.35), ember=kw.get('ember', 0.0),
-                  touch=kw.get('touch', (-1, -1)))
+                  touch=kw.get('touch', (-1, -1)), hdr=hdr)
     canvas.restore()
 
 
@@ -140,7 +144,7 @@ def render(f16, hdr, path):
         ('gold', 320, 52, dict(line=1.6, touch=(320 * DP * 0.7, 52 * DP * 0.5), hdr=hdr)),
     ]
     gap = 36
-    heights = [round(h * DP) for _, _, h, _ in [(k, w, h, kw) for k, w, h, kw in items]]
+    heights = [round(h * DP) for _, _, h, _ in items]
     total_h = sum(heights) + gap * (len(items) + 1)
     surf = surface(W, total_h, f16=f16)
     canvas = surf.getCanvas()
@@ -160,15 +164,6 @@ def render(f16, hdr, path):
     return surf, placed
 
 
-def read_float(surf, x, y):
-    """F16 の画面から1画素を読む(sRGB の符号化値。1.0 を超えるのは白より明るい)。"""
-    info = skia.ImageInfo.Make(1, 1, skia.kRGBA_F32_ColorType, skia.kUnpremul_AlphaType, CS)
-    buf = bytearray(16)
-    ok = surf.readPixels(info, buf, 4 * 4, int(x), int(y))
-    assert ok
-    return struct.unpack('<4f', bytes(buf))
-
-
 def max_in_rect(surf, rect):
     """矩形の中で一番明るい値(R, G, B のうち最大)。"""
     x0, y0, w, h = rect
@@ -179,8 +174,48 @@ def max_in_rect(surf, rect):
     return max(vals[i] for i in range(len(vals)) if i % 4 != 3)
 
 
+def strip_render(w, h):
+    """見本の写真と見比べるための帯(RIBBON 26dp)と窓(WINDOW 30dp)の重ね。見本と同じ幅に合わせる。"""
+    surf = surface(w, h)
+    canvas = surf.getCanvas()
+    y = 0.0
+    kinds = [('ribbon', 26), ('window', 30), ('ribbon', 26), ('window', 30), ('ribbon', 26)]
+    k = 0
+    for kind, hdp in kinds:
+        hp = hdp * DP
+        canvas.save()
+        canvas.translate(0, y)
+        if kind == 'ribbon':
+            ribbon(canvas, w, hp, line=1.0, ignite=1.0, seed=0.4 + k * 0.7)
+        else:
+            window(canvas, w, hp, glow=1.0, seed=0.7 + k * 0.5)
+        canvas.restore()
+        y += hp
+        k += 1
+    surf.flushAndSubmit()
+    return surf.makeImageSnapshot()
+
+
+def compare(path):
+    """見本の写真の切り抜き(上)と、同じ高さの描き(下)を並べて保存する。"""
+    crop = Image.open(PHOTO).convert('RGB').crop(PHOTO_BOX)
+    crop_path = os.path.join(OUT, 'photo_crop.png')
+    crop.save(crop_path)
+    from_photo = skia.Image.open(crop_path)
+    pw, ph = from_photo.width(), from_photo.height()
+    mine = strip_render(pw, ph)
+    out = skia.Surface.MakeRaster(skia.ImageInfo.Make(pw, ph * 2 + 16, skia.kRGBA_8888_ColorType, skia.kPremul_AlphaType, CS))
+    c = out.getCanvas()
+    c.clear(skia.Color(0x16, 0x16, 0x1A, 255))
+    c.drawImage(from_photo, 0, 0)
+    c.drawImage(mine, 0, ph + 16)
+    with open(path, 'wb') as f:
+        f.write(bytes(out.makeImageSnapshot().encodeToData()))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
+    compare(os.path.join(OUT, 'surfaces_vs_photo.png'))
     surf8, placed = render(False, 1.0, os.path.join(OUT, 'surfaces.png'))
     surf16, placed16 = render(True, 3.0, os.path.join(OUT, 'surfaces_hdr3.png'))
 

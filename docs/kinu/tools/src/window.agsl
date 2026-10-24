@@ -52,9 +52,9 @@ half4 main(float2 p) {
     float ceilBand = exp(-pow(dyc / (3.0 * dp), 2.0)) * 0.25;
     col += toLin(amberHi) * (lamp * 1.1 + ceilBand) * smoothstep(0.3, 0.0, v);
 
-    // 縦の薄いカーテン: 柔らかい縦縞(振幅 6%)
-    float fold = 0.5 + 0.5 * sin(p.x / dp * (PI2 / 13.0) + seed * 3.1 + 0.6 * sin(p.y / dp * 0.05));
-    col *= 1.0 - 0.06 * fold;
+    // 縦の薄いカーテン: 柔らかい縦縞(振幅 11%。見本のひだに合わせて SPEC の 6% より強め)
+    float fold = 0.5 + 0.5 * sin(p.x / dp * (PI2 / 9.0) + seed * 3.1 + 0.6 * sin(p.y / dp * 0.05));
+    col *= 1.0 - 0.11 * fold;
 
     // 縦の桟: 4分割、幅 1dp、#7A5A40 30%
     float cell = size.x / 4.0;
