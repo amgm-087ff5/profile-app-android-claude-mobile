@@ -36,21 +36,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawOutline
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -61,7 +54,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.businesscard.R
@@ -72,8 +64,8 @@ import kotlinx.coroutines.launch
 
 /**
  * ボタンの役割。
- *  - Primary: その画面の主操作。墨緑の面で、角に苔が生える
- *  - Secondary: 副操作。白い面に細い線。苔は生えない(主操作との対比のため)
+ *  - Primary: その画面の主操作。黒い岩に苔の黄緑の文字と細い縁、角に苔が生える
+ *  - Secondary: 副操作。黒い岩に淡い白の文字。苔は生えない(主操作との対比のため)
  */
 enum class KokeTone { Primary, Secondary }
 
@@ -84,7 +76,7 @@ private fun inkOn(tone: KokeTone): Color = when (tone) {
     KokeTone.Secondary -> KokeTheme.colors.ink
 }
 
-// ---- 押した反応(平面的に: 面の色が少し変わり、わずかに縮む) ----
+// ---- 押した反応(控えめに: わずかに縮み、岩が濡れたように少し明るくなる) ----
 
 /** 押している度合い。0 = 休んでいる、1 = 押しきった。 */
 @Stable
@@ -137,39 +129,18 @@ internal fun Modifier.kokeShrink(press: KokePress?, shrink: Float = KokeMotion.P
         }
     }
 
-/**
- * 平らな面: 単色の塗り + 内側に収まる細い線。影もグラデーションも付けない。
- * 押している間は [pressedFill] へ少し寄る(色の変化は描くときに読むので、作り直しは起きない)。
- */
-internal fun Modifier.kokeFace(
-    shape: Shape,
-    fill: Color,
-    pressedFill: Color = fill,
-    line: Color? = null,
-    lineWidth: Dp = KokeSize.line,
-    press: KokePress? = null,
-): Modifier = drawWithCache {
-    val outline = shape.createOutline(size, layoutDirection, this)
-    val w = lineWidth.toPx()
-    // 線は面の内側に収める(線の太さが変わっても部品の大きさが変わらない)
-    val inner = shape.createOutline(Size(size.width - w, size.height - w), layoutDirection, this)
-    onDrawBehind {
-        val p = press?.value ?: 0f
-        drawOutline(outline, if (p == 0f) fill else lerp(fill, pressedFill, p))
-        if (line != null && w > 0f) {
-            translate(w / 2f, w / 2f) { drawOutline(inner, line, style = Stroke(w)) }
-        }
-    }
-}
+/** アニメーションする色を、描くときに読む関数にする(読んでも組み立て直しが起きない)。 */
+private fun State<Color>.reader(): () -> Color = { value }
 
 // ---- 部品 ----
 
 /**
- * ボタン。平らな面に、はっきりした文字。
- * 主ボタン([KokeTone.Primary])は墨緑の面で、角に苔が 1 群れ生える(どの角か・形はボタンの文字から決まる種で変わる)。
- * 押すと面の色が少し変わり、わずかに縮む。苔は指の近くの株が沈む。押す・離すで短く振動し、確定でクリック音。
+ * ボタン。角の欠けた黒い濡れた岩に、はっきりした文字。
+ * 主ボタン([KokeTone.Primary])は苔の黄緑の文字と細い縁で、角に苔が 1 群れ生える(どの角か・形はボタンの文字から決まる種で変わる)。
+ * スクロールで画面の中の位置が変わると、面がわずかにずれ、中心側の側面が少し見える。
+ * 押すとわずかに縮み、岩が濡れたように少し明るくなる。苔は指の近くの株が沈む。押す・離すで短く振動し、確定でクリック音。
  *
- * @param contentColor 文字・アイコンの色。省略すると面に合う色
+ * @param contentColor 文字・アイコンの色。省略すると役割に合う色
  */
 @Composable
 fun KokeButton(
@@ -181,26 +152,35 @@ fun KokeButton(
     contentColor: Color = inkOn(tone),
 ) {
     val c = KokeTheme.colors
-    val shape = KokeShapes.control
+    val rock = KokeRocks.button
     val interaction = remember { MutableInteractionSource() }
     val feedback = rememberGlassFeedback()
     val press = rememberKokePress(interaction, feedback)
+    val view = rememberKokeViewOffset()
     val seed = remember(text) { text.hashCode() }
+    val rim = c.moss.copy(alpha = 0.32f)
 
     Row(
         modifier = modifier
             .heightIn(min = KokeSize.control)
+            .trackKokeViewOffset(view)
+            .kokeParallax(view)
             .kokeShrink(press)
             .then(
                 when (tone) {
                     KokeTone.Primary -> Modifier
-                        .kokeMoss(patches = KokeMossSpots.primaryButton(seed), shape = shape, seed = seed, interactionSource = interaction)
-                        .kokeFace(shape, fill = c.primary, pressedFill = c.primaryPressed, press = press)
-                    KokeTone.Secondary -> Modifier
-                        .kokeFace(shape, fill = c.surface, pressedFill = c.surfacePressed, line = c.line, press = press)
+                        .kokeMoss(
+                            patches = KokeMossSpots.primaryButton(seed),
+                            shape = rock.mossShape,
+                            seed = seed,
+                            interactionSource = interaction,
+                            view = view,
+                        )
+                        .kokeRock(rock, seed, view = view, press = press, rim = { rim })
+                    KokeTone.Secondary -> Modifier.kokeRock(rock, seed, view = view, press = press)
                 },
             )
-            // 押した反応は面の色と縮みで返すので、標準の波紋は出さない
+            // 押した反応は岩の縮みと明るさで返すので、標準の波紋は出さない
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -222,8 +202,8 @@ fun KokeButton(
 }
 
 /**
- * アイコンだけの四角いボタン(角丸)。戻る・編集・削除・見た目の切り替えなど。
- * 主([KokeTone.Primary])は墨緑の面で、右上に小さく苔が生える。副は白い面に細い線。
+ * アイコンだけの小さな岩のボタン。戻る・編集・削除・見た目の切り替えなど。
+ * 主([KokeTone.Primary])は苔の黄緑のアイコンと細い縁で、右上に小さく苔が生える。
  */
 @Composable
 fun KokeIconButton(
@@ -235,23 +215,32 @@ fun KokeIconButton(
     contentColor: Color = inkOn(tone),
 ) {
     val c = KokeTheme.colors
-    val shape = KokeShapes.control
+    val rock = KokeRocks.icon
     val interaction = remember { MutableInteractionSource() }
     val feedback = rememberGlassFeedback()
     val press = rememberKokePress(interaction, feedback)
+    val view = rememberKokeViewOffset()
     val seed = remember(icon) { icon.name.hashCode() }
+    val rim = c.moss.copy(alpha = 0.32f)
 
     Box(
         modifier = modifier
             .size(KokeSize.iconButton)
+            .trackKokeViewOffset(view)
+            .kokeParallax(view)
             .kokeShrink(press, shrink = KokeMotion.PRESS_SHRINK * 1.5f)
             .then(
                 when (tone) {
                     KokeTone.Primary -> Modifier
-                        .kokeMoss(patches = KokeMossSpots.primaryIcon, shape = shape, seed = seed, interactionSource = interaction)
-                        .kokeFace(shape, fill = c.primary, pressedFill = c.primaryPressed, press = press)
-                    KokeTone.Secondary -> Modifier
-                        .kokeFace(shape, fill = c.surface, pressedFill = c.surfacePressed, line = c.line, press = press)
+                        .kokeMoss(
+                            patches = KokeMossSpots.primaryIcon,
+                            shape = rock.mossShape,
+                            seed = seed,
+                            interactionSource = interaction,
+                            view = view,
+                        )
+                        .kokeRock(rock, seed, view = view, press = press, rim = { rim })
+                    KokeTone.Secondary -> Modifier.kokeRock(rock, seed, view = view, press = press)
                 },
             )
             .clickable(
@@ -270,8 +259,8 @@ fun KokeIconButton(
 }
 
 /**
- * 入力欄。平らな面に細い線。上にラベル、下にエラーの注記。
- * 入力中は線が墨色になって少し太くなり、エラーのときは線とラベルが危険色になる。苔は生えない。
+ * 入力欄。平らめの黒い岩(ファセットの明暗を弱くして、文字を読みやすく)。上にラベル(地の上なので墨)、下にエラーの注記。
+ * 入力中は縁の線が淡い白になって少し太くなり、エラーのときは縁が危険色になる。苔は生えない。
  */
 @Composable
 fun KokeTextField(
@@ -286,22 +275,23 @@ fun KokeTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
 ) {
     val c = KokeTheme.colors
-    val shape = KokeShapes.field
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val lineColor by animateColorAsState(
+    val view = rememberKokeViewOffset()
+    val seed = remember(label) { label.hashCode() }
+    val rimColor = animateColorAsState(
         targetValue = when {
-            isError -> c.danger
-            focused -> c.ink
-            else -> c.line
+            isError -> c.danger.copy(alpha = 0.95f)
+            focused -> c.ink.copy(alpha = 0.85f)
+            else -> c.ink.copy(alpha = 0.12f)
         },
         animationSpec = tween(KokeMotion.CHANGE_MILLIS),
-        label = "kokeFieldLine",
+        label = "kokeFieldRim",
     )
-    val lineWidth by animateDpAsState(
+    val rimWidth = animateDpAsState(
         targetValue = if (focused || isError) KokeSize.lineStrong else KokeSize.line,
         animationSpec = tween(KokeMotion.CHANGE_MILLIS),
-        label = "kokeFieldLineWidth",
+        label = "kokeFieldRimWidth",
     )
     val iconTint by animateColorAsState(
         targetValue = if (focused) c.ink else c.inkFaint,
@@ -313,7 +303,7 @@ fun KokeTextField(
         Text(
             text = label,
             style = KokeType.label,
-            color = if (isError) c.danger else c.inkMuted,
+            color = if (isError) c.groundDanger else c.groundInkMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 2.dp),
@@ -330,7 +320,7 @@ fun KokeTextField(
                 },
             singleLine = true,
             textStyle = KokeType.field.copy(color = c.ink),
-            cursorBrush = SolidColor(c.ink),
+            cursorBrush = SolidColor(c.moss),
             keyboardOptions = keyboardOptions,
             interactionSource = interaction,
             decorationBox = { innerTextField ->
@@ -338,7 +328,15 @@ fun KokeTextField(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(KokeSize.control)
-                        .kokeFace(shape, fill = c.surface, line = lineColor, lineWidth = lineWidth)
+                        .trackKokeViewOffset(view)
+                        .kokeParallax(view)
+                        .kokeRock(
+                            KokeRocks.field,
+                            seed,
+                            view = view,
+                            rim = rimColor.reader(),
+                            rimWidth = { rimWidth.value },
+                        )
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -357,13 +355,13 @@ fun KokeTextField(
         )
         if (isError && errorText != null) {
             Spacer(Modifier.height(6.dp))
-            Text(text = errorText, style = KokeType.caption, color = c.danger, modifier = Modifier.padding(start = 2.dp))
+            Text(text = errorText, style = KokeType.caption, color = c.groundDanger, modifier = Modifier.padding(start = 2.dp))
         }
     }
 }
 
 /**
- * 画面上部。戻るは左の四角いアイコンボタン、タイトル(明朝)はその右、右端に [actions]。
+ * 画面上部。戻るは左の小さな岩のボタン、タイトル(明朝・地の上なので墨)はその右、右端に [actions]。
  * 状態バーは自分で避ける。
  */
 @Composable
@@ -391,7 +389,7 @@ fun KokeTopBar(
         Text(
             text = title,
             style = KokeType.title,
-            color = KokeTheme.colors.ink,
+            color = KokeTheme.colors.groundInk,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
@@ -404,24 +402,27 @@ fun KokeTopBar(
     }
 }
 
-/** 文字だけの案内(一覧が空のときなど)。白い面に細い線、苔は生えない。 */
+/** 文字だけの案内(一覧が空のときなど)。平らめの岩に淡い白の文字、苔は生えない。 */
 @Composable
 fun KokeMessage(text: String, modifier: Modifier = Modifier) {
-    val c = KokeTheme.colors
+    val view = rememberKokeViewOffset()
+    val seed = remember(text) { text.hashCode() }
     Text(
         text = text,
         style = KokeType.body,
-        color = c.inkMuted,
+        color = KokeTheme.colors.inkMuted,
         textAlign = TextAlign.Center,
         modifier = modifier
-            .kokeFace(KokeShapes.card, fill = c.surface, line = c.line)
+            .trackKokeViewOffset(view)
+            .kokeParallax(view)
+            .kokeRock(KokeRocks.message, seed, view = view)
             .padding(horizontal = 28.dp, vertical = 24.dp),
     )
 }
 
 /**
- * 選択肢。左に印(選んでいるものは墨緑の丸にチェック、選んでいないものは細い線の丸)、その右に文字。
- * 選んでいるものは線が墨色で少し太くなり、右の辺に小さく苔が生える。
+ * 選択肢。左に印(選んでいるものは苔の黄緑の丸にチェック、選んでいないものは細い線の丸)、その右に文字。
+ * 選んでいるものは縁が苔の黄緑の細い線になり、右の辺に小さく苔が生える。
  */
 @Composable
 fun KokeChoice(
@@ -431,31 +432,35 @@ fun KokeChoice(
     modifier: Modifier = Modifier,
 ) {
     val c = KokeTheme.colors
-    val shape = KokeShapes.control
+    val rock = KokeRocks.button
     val interaction = remember { MutableInteractionSource() }
     val feedback = rememberGlassFeedback()
     val press = rememberKokePress(interaction, feedback)
+    val view = rememberKokeViewOffset()
     val seed = remember(text) { text.hashCode() * 31 + 7 }
+    val rim = if (selected) c.moss.copy(alpha = 0.7f) else c.ink.copy(alpha = 0.10f)
+    val rimWidth = if (selected) KokeSize.lineStrong else KokeSize.line
 
     Row(
         modifier = modifier
             .heightIn(min = KokeSize.control)
+            .trackKokeViewOffset(view)
+            .kokeParallax(view)
             .kokeShrink(press, shrink = KokeMotion.PRESS_SHRINK * 0.6f)
             .then(
                 if (selected) {
-                    Modifier.kokeMoss(patches = KokeMossSpots.selectedChoice, shape = shape, seed = seed, interactionSource = interaction)
+                    Modifier.kokeMoss(
+                        patches = KokeMossSpots.selectedChoice,
+                        shape = rock.mossShape,
+                        seed = seed,
+                        interactionSource = interaction,
+                        view = view,
+                    )
                 } else {
                     Modifier
                 },
             )
-            .kokeFace(
-                shape,
-                fill = c.surface,
-                pressedFill = c.surfacePressed,
-                line = if (selected) c.ink else c.line,
-                lineWidth = if (selected) KokeSize.lineStrong else KokeSize.line,
-                press = press,
-            )
+            .kokeRock(rock, seed, view = view, press = press, rim = { rim }, rimWidth = { rimWidth })
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -484,21 +489,21 @@ private fun ChoiceMark(selected: Boolean) {
         Box(
             modifier = Modifier
                 .size(20.dp)
-                .background(c.primary, CircleShape),
+                .background(c.moss, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(imageVector = Icons.Filled.Check, contentDescription = null, tint = c.onPrimary, modifier = Modifier.size(14.dp))
+            Icon(imageVector = Icons.Filled.Check, contentDescription = null, tint = c.rockLo, modifier = Modifier.size(14.dp))
         }
     } else {
         Box(
             modifier = Modifier
                 .size(20.dp)
-                .border(KokeSize.lineStrong, c.line, CircleShape),
+                .border(KokeSize.lineStrong, c.inkFaint, CircleShape),
         )
     }
 }
 
-/** ダイアログ。白い面に角丸、ごく薄い影。苔は生えない。中身は [content] に縦に並べる。 */
+/** ダイアログ。大きな平らめの岩(ファセットの明暗は弱く)。苔は生えない。中身は [content] に縦に並べる。 */
 @Composable
 fun KokeDialog(
     title: String,
@@ -507,14 +512,17 @@ fun KokeDialog(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        // 影と、中の部品の苔がはみ出す分の余白
+        // 岩の側面と影、中の部品の苔がはみ出す分の余白
         Box(modifier = Modifier.padding(16.dp)) {
             KokeDialogPanel(title = title, message = message, content = content)
         }
     }
 }
 
-/** ダイアログの面と中身(窓を開かずに描けるよう分けている。カタログでも使う)。 */
+/**
+ * ダイアログの岩と中身(窓を開かずに描けるよう分けている。カタログでも使う)。
+ * ダイアログは画面の中の位置で動かさない(窓の中央に固定なので、側面は真下に少しだけ)。
+ */
 @Composable
 internal fun KokeDialogPanel(
     title: String,
@@ -523,12 +531,11 @@ internal fun KokeDialogPanel(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = KokeTheme.colors
-    val shape = KokeShapes.dialog
+    val seed = remember(title) { title.hashCode() }
     Column(
         modifier = modifier
             .widthIn(max = 420.dp)
-            .shadow(elevation = 10.dp, shape = shape, clip = false, ambientColor = c.ink.copy(alpha = 0.12f), spotColor = c.ink.copy(alpha = 0.16f))
-            .kokeFace(shape, fill = c.surface)
+            .kokeRock(KokeRocks.dialog, seed)
             .padding(horizontal = 24.dp, vertical = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -542,8 +549,8 @@ internal fun KokeDialogPanel(
 }
 
 /**
- * 取り消せない操作の確認。[キャンセル] [確定] をどちらも白い面で並べ、確定は危険色の文字にする
- * (墨緑の面と苔は「進める」操作の印なので、取り消せない操作には使わない)。
+ * 取り消せない操作の確認。[キャンセル] [確定] をどちらも副の岩で並べ、確定は危険色の文字にする
+ * (苔と黄緑は「進める」操作の印なので、取り消せない操作には使わない)。
  */
 @Composable
 fun KokeConfirmDialog(

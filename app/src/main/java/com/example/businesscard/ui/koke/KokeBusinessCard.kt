@@ -23,19 +23,21 @@ import com.example.businesscard.domain.model.BusinessCard
 import com.example.businesscard.ui.glass.rememberGlassFeedback
 
 /**
- * 名刺(レイアウト固定)。白い面に細い線、影は付けない。文字は左寄せ:
+ * 名刺(レイアウト固定)。角の欠けた黒い濡れた岩(大きなファセット)。文字は左寄せ、淡い白:
  *
  *   会社名(小さく)
  *   肩書き(副文字)
  *
  *   名前(明朝・大きく)
- *   ──(短い墨の線)
+ *   ──(短い苔の黄緑の線)
  *   電話 / メール(副文字)
  *
  * 右側の角と辺に、苔が 2 群れ生える(名刺ごとに id から種を決め、隣の名刺と同じ形にならない)。
  * 文字は左に寄せてあるので、苔は文字に掛からない。
  *
- * @param onClick 指定すると面全体がボタンになる。押すと面の色が少し変わり、ほんの少し縮む。苔は指の近くが沈む
+ * スクロールで画面の中の位置が変わると、面(文字と苔ごと)がわずかにずれ、中心側の側面が少し見える。
+ *
+ * @param onClick 指定すると面全体がボタンになる。押すとほんの少し縮み、岩が濡れたように少し明るくなる。苔は指の近くが沈む
  */
 @Composable
 fun KokeBusinessCard(
@@ -44,7 +46,8 @@ fun KokeBusinessCard(
     onClick: (() -> Unit)? = null,
 ) {
     val c = KokeTheme.colors
-    val shape = KokeShapes.card
+    val rock = KokeRocks.card
+    val view = rememberKokeViewOffset()
     val interaction = remember { MutableInteractionSource() }
     val feedback = rememberGlassFeedback()
     val press = if (onClick != null) rememberKokePress(interaction, feedback) else null
@@ -55,9 +58,17 @@ fun KokeBusinessCard(
     Column(
         modifier = modifier
             .aspectRatio(CARD_ASPECT_RATIO)
+            .trackKokeViewOffset(view)
+            .kokeParallax(view)
             .kokeShrink(press, shrink = KokeMotion.CARD_SHRINK)
-            .kokeMoss(patches = patches, shape = shape, seed = seed, interactionSource = if (onClick != null) interaction else null)
-            .kokeFace(shape, fill = c.surface, pressedFill = c.surfacePressed, line = c.line, press = press)
+            .kokeMoss(
+                patches = patches,
+                shape = rock.mossShape,
+                seed = seed,
+                interactionSource = if (onClick != null) interaction else null,
+                view = view,
+            )
+            .kokeRock(rock, seed, view = view, press = press)
             .then(
                 if (onClick != null) {
                     Modifier.clickable(
@@ -89,12 +100,12 @@ fun KokeBusinessCard(
         Column {
             Text(text = card.name, style = KokeType.cardName, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(10.dp))
-            // 名前の下の短い墨の線(名刺の唯一の飾り)
+            // 名前の下の短い苔の黄緑の線(名刺の唯一の飾り)
             Box(
                 Modifier
-                    .width(24.dp)
+                    .width(KokeSize.accentRule)
                     .height(1.dp)
-                    .background(c.ink),
+                    .background(c.moss),
             )
             Spacer(Modifier.height(10.dp))
             if (card.phone.isNotEmpty()) {

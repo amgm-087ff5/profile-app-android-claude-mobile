@@ -31,23 +31,24 @@ fun KokeTheme(content: @Composable () -> Unit) {
 
 /**
  * Material3 の ColorScheme への対応づけ(Material3 の標準部品が Koke の色と食い違わないようにするため)。
- * 明るい地に墨の文字なので、lightColorScheme を土台にする。
+ * 地は明るい霧の灰(システムバーのアイコンは暗い色)なので lightColorScheme を土台にし、
+ * 面(surface)は黒い岩、その上の文字は淡い白にする。
  */
 fun kokeColorScheme(c: KokeColors): ColorScheme = lightColorScheme(
-    primary = c.primary,
+    primary = c.rockLo,
     onPrimary = c.onPrimary,
-    secondary = c.inkMuted,
-    onSecondary = c.surface,
+    secondary = c.groundInkMuted,
+    onSecondary = c.ground,
     background = c.ground,
-    onBackground = c.ink,
-    surface = c.surface,
+    onBackground = c.groundInk,
+    surface = c.rockLo,
     onSurface = c.ink,
-    surfaceVariant = c.ground,
+    surfaceVariant = c.rockHi,
     onSurfaceVariant = c.inkMuted,
-    surfaceContainer = c.surface,
-    error = c.danger,
-    outline = c.line,
-    outlineVariant = c.line,
+    surfaceContainer = c.rockLo,
+    error = c.groundDanger,
+    outline = c.groundInkMuted,
+    outlineVariant = c.inkFaint,
     scrim = c.scrim,
 )
 

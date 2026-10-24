@@ -1,0 +1,243 @@
+package com.example.businesscard.ui.koke
+
+/**
+ * Koke(苔むす)の部品の面: 黒い濡れた岩の AGSL シェーダー(Android 13 以上の RuntimeShader で描く)。
+ *
+ *  - ROCK: 角の欠けた 12 角形(凸)の面を、平らなファセット(ボロノイ)に分けて明るさを少しずつ変える。
+ *    ファセットの稜線の細い光と陰、光の方を向いたファセットの控えめなつや、まばらな水滴の光点、左上を向いた縁の細い光。
+ *    面から base だけずれた所に底があり、その間を薄い側面として塗る(画面の中の位置で、中心側の側面が見える)。
+ *    地面には底の形の薄い接地の影を落とす。rim で縁に線(フォーカス・エラー・選択中)。
+ *
+ * uniform: size(部品の大きさ px), dp, seed(0..1), base(底のずれ px), press(0..1), rockLo / rockHi(ファセットの色の幅),
+ * relief(ファセットの傾きの強さ), facet(ファセットの大きさ px), rim(縁の線の色と濃さ), rimWidth(px),
+ * polyA..polyF(輪郭の 12 頂点、px)。返す色は premultiplied。宣言した uniform はすべて使う。
+ *
+ * 元のファイル: docs/koke/tools/src/koke_rock.agsl(ここは書き出したもの。直接編集しない)。
+ * 手元での確認: docs/koke/tools/koke_rock.py(skia-python で同じシェーダーを CPU で描く)。
+ */
+object KokeRockShaders {
+    const val ROCK = """// Koke の部品の面: 黒い濡れた岩(フラット寄り)。
+// 角の欠けた多角形(12 頂点、凸)を平らなファセットに分けて塗り分け、控えめな濡れたつや(縁の光・ファセットの稜線・小さな光点)を足す。
+// 面は原点にあり、底は base だけずれた所にある。面と底の間を側面として塗る(画面の中の位置に合わせて、Kotlin 側が base を決める)。
+// 面そのもののずれ(パララクス)は、文字や苔と一緒に Kotlin 側の graphicsLayer で動かす。地面に薄い接地の影を落とす。
+// 座標は部品の左上が原点(px)。描く範囲は部品のまわりに広げてある(側面と影がはみ出す)。返す色は premultiplied。
+// 宣言した uniform はすべて使う(使われずに消えると、設定したときに落ちる)。
+
+uniform float2 size;     // 部品の大きさ(px)
+uniform float dp;        // 1dp の px 数
+uniform float seed;      // ファセットの種(0..1)
+uniform float2 base;     // 岩の底(地面に接する輪郭)の、面からのずれ(px)。画面の中心側の側面が見える向き・長さ
+uniform float press;     // 押している強さ 0..1(面がわずかに濡れて明るくなる)
+uniform float3 rockLo;   // 暗いファセットの色
+uniform float3 rockHi;   // 明るいファセットの色
+uniform float relief;    // ファセットの傾きの強さ(0 = 真っ平ら、1 = 標準)
+uniform float facet;     // ファセットの大きさ(px)
+uniform float4 rim;      // 縁の線の色(rgb)と濃さ(a)。a = 0 で線なし
+uniform float rimWidth;  // 縁の線の太さ(px)
+uniform float4 polyA;    // 輪郭の頂点 0,1(時計回り)
+uniform float4 polyB;    // 頂点 2,3
+uniform float4 polyC;    // 頂点 4,5
+uniform float4 polyD;    // 頂点 6,7
+uniform float4 polyE;    // 頂点 8,9
+uniform float4 polyF;    // 頂点 10,11
+
+float hash1(float2 q) {
+    return fract(sin(dot(q, float2(127.1, 311.7)) + seed * 91.7) * 43758.5453);
+}
+
+float2 hash2(float2 q) {
+    return float2(hash1(q), hash1(q + float2(17.31, 5.97)));
+}
+
+// 辺 a→b からの符号付き距離(外が正)
+float edgeD(float2 p, float2 a, float2 b) {
+    float2 d = normalize(b - a);
+    return dot(p - a, float2(d.y, -d.x));
+}
+
+// 多角形の符号付き距離(凸なので、各辺の距離の最大)
+float poly(float2 p) {
+    float d = edgeD(p, polyA.xy, polyA.zw);
+    d = max(d, edgeD(p, polyA.zw, polyB.xy));
+    d = max(d, edgeD(p, polyB.xy, polyB.zw));
+    d = max(d, edgeD(p, polyB.zw, polyC.xy));
+    d = max(d, edgeD(p, polyC.xy, polyC.zw));
+    d = max(d, edgeD(p, polyC.zw, polyD.xy));
+    d = max(d, edgeD(p, polyD.xy, polyD.zw));
+    d = max(d, edgeD(p, polyD.zw, polyE.xy));
+    d = max(d, edgeD(p, polyE.xy, polyE.zw));
+    d = max(d, edgeD(p, polyE.zw, polyF.xy));
+    d = max(d, edgeD(p, polyF.xy, polyF.zw));
+    d = max(d, edgeD(p, polyF.zw, polyA.xy));
+    return d;
+}
+
+// いちばん近い(距離が最大の)辺の距離と外向きの法線
+float3 pickN(float3 best, float2 p, float2 a, float2 b) {
+    float2 d = normalize(b - a);
+    float2 n = float2(d.y, -d.x);
+    float s = dot(p - a, n);
+    return s > best.x ? float3(s, n) : best;
+}
+
+float3 polyN(float2 p) {
+    float3 r = float3(-1e9, 0.0, -1.0);
+    r = pickN(r, p, polyA.xy, polyA.zw);
+    r = pickN(r, p, polyA.zw, polyB.xy);
+    r = pickN(r, p, polyB.xy, polyB.zw);
+    r = pickN(r, p, polyB.zw, polyC.xy);
+    r = pickN(r, p, polyC.xy, polyC.zw);
+    r = pickN(r, p, polyC.zw, polyD.xy);
+    r = pickN(r, p, polyD.xy, polyD.zw);
+    r = pickN(r, p, polyD.zw, polyE.xy);
+    r = pickN(r, p, polyE.xy, polyE.zw);
+    r = pickN(r, p, polyE.zw, polyF.xy);
+    r = pickN(r, p, polyF.xy, polyF.zw);
+    r = pickN(r, p, polyF.zw, polyA.xy);
+    return r;
+}
+
+// 側面: 面を b だけ動かした掃引の中か。辺ごとに、p - t*b が辺の内側になる t の範囲を絞る
+float2 sweepEdge(float2 r, float2 p, float2 b, float2 a, float2 c) {
+    float2 d = normalize(c - a);
+    float2 n = float2(d.y, -d.x);
+    float s = dot(p - a, n);
+    float k = dot(n, b);
+    if (k > 0.0001) {
+        r.x = max(r.x, s / k);
+    } else if (k < -0.0001) {
+        r.y = min(r.y, s / k);
+    } else if (s > 0.0) {
+        r.x = 2.0;
+    }
+    return r;
+}
+
+float2 sweep(float2 p, float2 b) {
+    float2 r = float2(0.0, 1.0);
+    r = sweepEdge(r, p, b, polyA.xy, polyA.zw);
+    r = sweepEdge(r, p, b, polyA.zw, polyB.xy);
+    r = sweepEdge(r, p, b, polyB.xy, polyB.zw);
+    r = sweepEdge(r, p, b, polyB.zw, polyC.xy);
+    r = sweepEdge(r, p, b, polyC.xy, polyC.zw);
+    r = sweepEdge(r, p, b, polyC.zw, polyD.xy);
+    r = sweepEdge(r, p, b, polyD.xy, polyD.zw);
+    r = sweepEdge(r, p, b, polyD.zw, polyE.xy);
+    r = sweepEdge(r, p, b, polyE.xy, polyE.zw);
+    r = sweepEdge(r, p, b, polyE.zw, polyF.xy);
+    r = sweepEdge(r, p, b, polyF.xy, polyF.zw);
+    r = sweepEdge(r, p, b, polyF.zw, polyA.xy);
+    return r;
+}
+
+float3 facetNormal(float2 c) {
+    float2 r = hash2(c + float2(41.0, 13.0)) - 0.5;
+    return normalize(float3(r * 0.95 * relief, 1.0));
+}
+
+half4 main(float2 p) {
+    float2 b = base;
+    float2 pf = p;
+    float3 fn = polyN(pf);
+    float dFace = fn.x;
+    float cf = clamp(0.5 - dFace, 0.0, 1.0);
+
+    // ---- 地面に落ちる接地の影(底の形を少し下へ、ぼかして) ----
+    float ds = poly(pf - b - float2(0.0, 1.0) * dp);
+    float sh = 0.30 * (1.0 - smoothstep(-1.5 * dp, 3.2 * dp, ds));
+    half4 o = half4(0.0, 0.0, 0.0, half(sh));
+
+    // ---- 側面 ----
+    if (cf < 1.0) {
+        float2 tr = sweep(pf, b);
+        float tm = clamp(0.5 * (tr.x + tr.y), 0.0, 1.0);
+        float dSide = poly(pf - b * tm);
+        float cs = clamp(0.5 - dSide, 0.0, 1.0);
+        if (cs > 0.0) {
+            // 見えている側面の向き(b の向き)が光(左上)に向くほど明るい
+            float bl = length(b);
+            float sl = bl > 0.001 ? dot(b / bl, float2(-0.55, -0.83)) : 0.0;
+            float3 sideCol = rockLo * (0.55 + 0.30 * sl);
+            // 面との境目(t が小さい所)はわずかに明るく、濡れた角に見せる。底の際は暗く
+            sideCol += float3(0.035) * (1.0 - smoothstep(0.0, 0.35, tm));
+            sideCol *= 0.8 + 0.2 * smoothstep(1.0, 0.6, tm);
+            o = mix(o, half4(half3(sideCol), 1.0), half(cs));
+        }
+    }
+    if (cf <= 0.0) {
+        return o;
+    }
+
+    // ---- 面: ファセット(ボロノイ) ----
+    // 格子は部品の中心から測る(部品の大きさが変わっても、中心の模様は動かない)
+    float2 g = (pf - size * 0.5) / facet;
+    float2 gi = floor(g);
+    float d1 = 1e9;
+    float d2 = 1e9;
+    float2 c1 = gi;
+    float2 c2 = gi;
+    for (int j = -1; j <= 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+            float2 c = gi + float2(float(i), float(j));
+            float2 q = c + 0.15 + 0.7 * hash2(c);
+            float dd = length(g - q);
+            if (dd < d1) {
+                d2 = d1;
+                c2 = c1;
+                d1 = dd;
+                c1 = c;
+            } else if (dd < d2) {
+                d2 = dd;
+                c2 = c;
+            }
+        }
+    }
+    float3 L = normalize(float3(-0.5, -0.7, 0.9));
+    float lam0 = L.z;
+    float3 n1 = facetNormal(c1);
+    float3 n2 = facetNormal(c2);
+    float lam1 = dot(n1, L);
+    float lam2 = dot(n2, L);
+    float v = 0.5 + (lam1 - lam0) * 2.4 + (hash1(c1 + float2(7.0, 3.0)) - 0.5) * 0.3 * relief;
+    float3 col = mix(rockLo, rockHi, clamp(v, 0.0, 1.0));
+
+    // ファセットの境(稜線): 明るい側に細い光、暗い側に細い陰。全体にごく薄い溝
+    float e = (d2 - d1) * facet;
+    float crease = 1.0 - smoothstep(0.0, 1.1 * dp, e);
+    col += float3(clamp((lam1 - lam2) * 0.9, -0.05, 0.07)) * crease * relief;
+    col *= 1.0 - crease * 0.12 * relief;
+
+    // 濡れたつや: 光の方を向いたファセットだけ、うっすら冷たい白
+    float3 H = normalize(L + float3(0.0, 0.0, 1.0));
+    float sp = pow(max(dot(n1, H), 0.0), 160.0);
+    col += float3(0.72, 0.78, 0.84) * sp * 0.07;
+
+    // 小さな光点(水滴): 6dp の格子に、まばらに 1 つ
+    float cellW = 6.0 * dp;
+    float2 wg = pf / cellW;
+    float2 wi = floor(wg);
+    if (hash1(wi + float2(3.1, 8.3)) < 0.07) {
+        float2 wc = wi + 0.2 + 0.6 * hash2(wi + float2(9.7, 2.2));
+        float rr = (0.35 + 0.45 * hash1(wi + float2(1.3, 4.4))) * dp;
+        float dd = length(wg - wc) * cellW;
+        float lit = 0.25 + 0.75 * clamp((lam1 - 0.6) * 3.0, 0.0, 1.0);
+        col += float3(0.85, 0.9, 0.95) * (1.0 - smoothstep(rr * 0.4, rr, dd)) * 0.5 * lit;
+    }
+
+    // 輪郭の縁: 濡れた角に細い光(左上を向いた辺ほど強い)
+    float ed = -dFace;
+    float edgeBand = 1.0 - smoothstep(0.0, 1.4 * dp, ed);
+    float facing = max(0.0, dot(fn.yz, float2(-0.55, -0.83)));
+    col += float3(0.78, 0.83, 0.88) * edgeBand * (0.04 + 0.22 * facing);
+
+    // 押している間、面がわずかに濡れて明るくなる
+    col += float3(0.018) * press;
+
+    // 縁の線(フォーカス・エラー・選択中)
+    float lineA = rim.a * (1.0 - smoothstep(rimWidth - 0.6, rimWidth + 0.4, ed));
+    col = mix(col, rim.rgb, lineA);
+
+    return mix(o, half4(half3(col), 1.0), half(cf));
+}
+"""
+}

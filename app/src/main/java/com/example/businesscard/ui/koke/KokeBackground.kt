@@ -11,7 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 
 /**
- * 画面の背景。平らな温かい白灰だけ(苔は置かない。部品に生える苔を主役にするため)。
+ * 画面の背景。平らな霧の灰だけ(苔も岩も置かない。黒い岩の部品と、そこに生える苔を主役にするため)。
  * システムバーは避けない(避けるのは骨格 [KokeScaffold] と、各画面の役目)。
  */
 @Composable
@@ -39,7 +39,7 @@ fun KokeScaffold(
     KokeBackground(modifier) {
         Scaffold(
             containerColor = Color.Transparent,
-            contentColor = KokeTheme.colors.ink,
+            contentColor = KokeTheme.colors.groundInk,
             topBar = topBar,
             bottomBar = bottomBar,
             content = content,

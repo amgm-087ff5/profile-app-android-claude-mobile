@@ -12,64 +12,67 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
  * デザインシステム「Koke(苔むす)」のトークン。
  *
- * 考え方: 部品は平らなモダンUI(単色の面・くっきりした角丸・1dp の細い線・影はほぼ無し)。
- * 色は墨・白・灰だけに抑え、鮮やかな色は部品の一部に生える苔(黄緑)だけにする。
- * 苔の色は苔の描画(KokeMoss.kt)が持つので、ここには置かない。
+ * 考え方: 霧のような明るい灰の地に、黒い濡れた岩の部品が置かれ、その一部に苔が生える。
+ * 岩はフラット寄り(数枚〜十数枚の平らなファセットの塗り分け + 控えめなつや)で、角が欠けた不揃いな形。
+ * 鮮やかな色は苔の黄緑だけ。主ボタンの文字と細い縁にも、苔の黄緑を差し色に使う。
  *
- *  - 地: 温かい白灰。紙や漆喰のような、何も主張しない平面
- *  - 面: 地より一段明るい白。1dp の線で縁取る
- *  - 主ボタン: 深い墨緑の面(苔の生える石のような色)。白に近い文字
- *  - 文字: 墨。見出しと名刺の名前は明朝(Serif)で静かに、操作の文字はゴシック(Sans)ではっきり
+ *  - 地: 霧の灰(#D8DAD5)。黒い岩がくっきり映え、苔の黄緑が浮く
+ *  - 岩: わずかに青みのある黒(#131517〜#2C2F33)
+ *  - 岩の上の文字: 淡い白。地の上の文字(画面タイトル・入力欄のラベル)は墨
  *
+ * 文字色は「岩の上」と「地の上」で別のトークンにする(ink / inkMuted / danger は岩の上。AppComponents も岩の上で使う)。
  * 画面に直接 Color(0x...) を書かず、必ずこのトークン経由で使う。
  */
 @Immutable
 data class KokeColors(
-    /** 画面の地(温かい白灰) */
+    /** 画面の地(霧の灰) */
     val ground: Color,
-    /** 部品の面(名刺・入力欄・副ボタン・ダイアログ) */
-    val surface: Color,
-    /** 面を押している間の色(地に少し近づく) */
-    val surfacePressed: Color,
-    /** 面の縁の細い線 */
-    val line: Color,
-    /** 主ボタンの面(深い墨緑) */
-    val primary: Color,
-    /** 主ボタンを押している間の色(少し明るく、緑みが増す) */
-    val primaryPressed: Color,
-    /** 主ボタンの上の文字 */
+    /** 岩のファセットの色の幅(暗い側・明るい側) */
+    val rockLo: Color,
+    val rockHi: Color,
+    /** 苔の黄緑(主ボタンの文字・細い縁・選んでいる印) */
+    val moss: Color,
+    /** 主ボタンの上の文字(= 苔の黄緑) */
     val onPrimary: Color,
-    /** 文字(墨)。入力欄のフォーカス線と、選んでいる選択肢の線にも使う */
+    /** 岩の上の文字(淡い白)。フォーカス中の入力欄の縁の線にも使う */
     val ink: Color,
-    /** 副文字(ラベル・名刺の連絡先) */
+    /** 岩の上の副文字(名刺の連絡先・ダイアログの説明) */
     val inkMuted: Color,
-    /** さらに薄い文字(入力欄の空のときの案内・アイコン) */
+    /** 岩の上の、さらに薄い文字(入力欄の空のときの案内・アイコン) */
     val inkFaint: Color,
-    /** 取り消せない操作・エラー(赤褐色。鮮やかすぎない土の赤) */
+    /** 岩の上の危険色(取り消せない操作の文字・エラーの縁)。黒い岩の上で読める明るい赤褐色 */
     val danger: Color,
+    /** 地の上の文字(画面タイトル) */
+    val groundInk: Color,
+    /** 地の上の副文字(入力欄のラベル) */
+    val groundInkMuted: Color,
+    /** 地の上の危険色(入力欄のエラーの注記) */
+    val groundDanger: Color,
     /** ダイアログの後ろを暗くする色 */
     val scrim: Color,
 )
 
 val DefaultKokeColors = KokeColors(
-    ground = Color(0xFFEEEDE8),
-    surface = Color(0xFFFAFAF7),
-    surfacePressed = Color(0xFFF1F0EB),
-    line = Color(0xFFD9D7CF),
-    primary = Color(0xFF1E2A22),
-    primaryPressed = Color(0xFF2B3A2F),
-    onPrimary = Color(0xFFF4F5F0),
-    ink = Color(0xFF1F2420),
-    inkMuted = Color(0xFF5E625C),
-    inkFaint = Color(0xFF93968F),
-    danger = Color(0xFFB4462E),
-    scrim = Color(0x521F2420),
+    ground = Color(0xFFD8DAD5),
+    rockLo = Color(0xFF131517),
+    rockHi = Color(0xFF2C2F33),
+    moss = Color(0xFFC8DE6E),
+    onPrimary = Color(0xFFC8DE6E),
+    ink = Color(0xFFECEDE8),
+    inkMuted = Color(0xFFA4A9A3),
+    inkFaint = Color(0xFF767C76),
+    danger = Color(0xFFEF8B74),
+    groundInk = Color(0xFF1C201D),
+    groundInkMuted = Color(0xFF555B55),
+    groundDanger = Color(0xFFA63A26),
+    scrim = Color(0x66101211),
 )
 
 val LocalKokeColors = staticCompositionLocalOf { DefaultKokeColors }
@@ -83,15 +86,58 @@ object KokeTheme {
 }
 
 /**
- * 形のトークン。丸すぎない、くっきりした角丸(苔が角を回り込めるよう、はっきりした「角」を残す)。
- * 大きい部品ほど角丸を大きくして、並べたときの階層が分かるようにする。
+ * 岩の形と面の決まり。
+ * @param chip 角の欠けの大きさ(角ごとに 0.75〜1.15 倍に散らす)
+ * @param facet ファセットの大きさ(大きい部品ほど大きく、塗り分けが細かくなりすぎないように)
+ * @param relief ファセットの明暗の強さ(文字が多い面ほど弱く)
+ */
+@Immutable
+data class KokeRockStyle(val chip: Dp, val facet: Dp, val relief: Float) {
+    /**
+     * 苔に渡す形。苔は角丸の 45 度の点を基準に角を回り込むので、欠けた角の中ほどに来る角丸
+     * (半径 = 欠けの約 1.7 倍)を渡す。
+     */
+    val mossShape: CornerBasedShape get() = RoundedCornerShape(chip * 1.7f)
+}
+
+/** 部品ごとの岩。 */
+object KokeRocks {
+    val button = KokeRockStyle(chip = 10.dp, facet = 40.dp, relief = 0.8f)
+    val icon = KokeRockStyle(chip = 9.dp, facet = 26.dp, relief = 0.8f)
+    val field = KokeRockStyle(chip = 8.dp, facet = 44.dp, relief = 0.5f)
+    val card = KokeRockStyle(chip = 16.dp, facet = 64.dp, relief = 1.0f)
+    val message = KokeRockStyle(chip = 14.dp, facet = 56.dp, relief = 0.6f)
+    val dialog = KokeRockStyle(chip = 18.dp, facet = 72.dp, relief = 0.45f)
+}
+
+/**
+ * 形のトークン(Material3 の Shapes に渡す分と、苔・押した判定の目安)。
+ * 部品の見た目の輪郭は岩(KokeRock.kt)が描くので、ここは欠けの大きさに近い角丸にしておく。
  * Material3 の Shapes に渡すので、型は CornerBasedShape。
  */
 object KokeShapes {
-    val field: CornerBasedShape = RoundedCornerShape(12.dp)
-    val control: CornerBasedShape = RoundedCornerShape(14.dp)
-    val card: CornerBasedShape = RoundedCornerShape(18.dp)
-    val dialog: CornerBasedShape = RoundedCornerShape(24.dp)
+    val field: CornerBasedShape = KokeRocks.field.mossShape
+    val control: CornerBasedShape = KokeRocks.button.mossShape
+    val card: CornerBasedShape = KokeRocks.card.mossShape
+    val dialog: CornerBasedShape = KokeRocks.dialog.mossShape
+}
+
+/** 岩の厚みとパララクス(画面の中の位置 -1..1 に掛ける量)。動きはごく小さく、文字の読みやすさを損なわない。 */
+object KokeDepth {
+    /** 画面の中央にあるときに見える下の側面 */
+    val side = 2.5.dp
+
+    /** 画面の上端・下端で、側面が増減する量(上にあるほど下の側面が長い) */
+    val sideTilt = 4.5.dp
+
+    /** 左右の端で見える横の側面 */
+    val sideTiltX = 3.dp
+
+    /** 面(文字・苔ごと)が画面の中心から遠ざかる量。苔はさらに 1〜2dp 多くずれる(KokeMoss.kt) */
+    val faceShift = 2.5.dp
+
+    /** 岩の側面・影を描くため、部品のまわりに広げる幅 */
+    val drawMargin = 12.dp
 }
 
 /** 大きさのトークン。 */
@@ -102,14 +148,17 @@ object KokeSize {
     /** アイコンボタンの一辺 */
     val iconButton = 48.dp
 
-    /** 面の縁の線の太さ */
+    /** 縁の線の太さ */
     val line = 1.dp
 
     /** フォーカス中・選んでいるときの線の太さ */
     val lineStrong = 1.5.dp
+
+    /** 名刺の名前の下の短い線 */
+    val accentRule = 24.dp
 }
 
-/** 動きのトークン。押した反応は平面的に: 面の色が少し変わり、わずかに縮む。 */
+/** 動きのトークン。押した反応は控えめに: 岩がわずかに縮み、濡れたように少し明るくなる。 */
 object KokeMotion {
     /** 押し始め: すっと縮む(跳ねない) */
     val pressSpring: AnimationSpec<Float> = spring(dampingRatio = 1f, stiffness = 2200f)
