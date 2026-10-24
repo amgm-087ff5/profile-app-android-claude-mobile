@@ -48,7 +48,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.foundation.clickable as clickableNoIndication
 import com.example.businesscard.R
 import com.example.businesscard.ui.glass.rememberGlassFeedback
 
@@ -374,7 +373,7 @@ fun KinuDialog(
             modifier = Modifier
                 .fillMaxSize()
                 .background(c.scrim)
-                .clickableNoIndication(
+                .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onDismiss,
@@ -388,7 +387,7 @@ fun KinuDialog(
                     .widthIn(max = 420.dp)
                     .kinuNightGlass(KinuShapes.dialog, line = { KinuLight.LINE_NIGHT })
                     // 面の中をタップしても閉じないよう、タップを受け取って消費する
-                    .clickableNoIndication(
+                    .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},

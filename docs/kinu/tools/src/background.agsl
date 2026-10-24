@@ -20,10 +20,11 @@ const float PI = 3.14159265;
 
 // ---- 塔の銀の縦の波線(dp) ----
 const float FIN_STEP = 11.0;
-const float FIN_HALF = 0.45;      // 線の幅 0.8dp の半分
+const float FIN_HALF = 0.3;      // 線の幅 0.6dp の半分
 const float FIN_WAVE_AMP = 2.5;
 const float FIN_WAVE_LEN = 140.0;
-const float FIN_COVER = 0.9;     // 見本の銀は低コントラスト
+// 線の明るさ(見本は黒地に低コントラストの灰銀。白く強すぎると糸に見える)
+const float FIN_COVER = 0.36;
 
 // ---- 帯と窓(dp) ----
 const float BAND_H = 26.0;
@@ -31,6 +32,7 @@ const float WIN_H = 30.0;
 const float BAND_PITCH = 56.0;   // BAND_H + WIN_H
 const float BAND_COUNT = 3.0;
 const float LOWER_GLASS = 138.0; // 最後の帯の下端(ここより下は窓だけ)
+const float LIGHT_PITCH = 9.0;   // 天井の灯りの間隔(おおよそ。位置と明るさは揺らす)
 
 // ---- 光の線 ----
 const float LINE_CORE_K = 4.5;   // 芯の強さ(線形。hdr=1 では lineCore で止まる)
@@ -52,6 +54,11 @@ float hash12(float2 p) {
     return fract((p3.x + p3.y) * p3.z);
 }
 
+// 整数の番号から 0..1 の揺らぎ(線ごと・灯りごとの位置と明るさ)
+float hash1(float n) {
+    return fract(sin(n * 127.1 + 311.7) * 43758.5453);
+}
+
 // 線形の光を、各チャンネルの天井 C へ向けてなめらかに丸める。
 // 0.8C までは変えない。大きな値は C へ漸近するので、光の芯は lineCore の色(hdr=1)か白の hdr 倍で止まる
 float3 toneMapC(float3 x, float3 C) {
@@ -60,7 +67,7 @@ float3 toneMapC(float3 x, float3 C) {
     return min(x, k) + (C - k) * over / ((C - k) + over);
 }
 
-// 塔の銀の線の被覆率 0..1。線は x 方向に 11dp おき、位相は線ごとにずらす。
+// 塔の銀の線の被覆率 0..1。線は x 方向に 11dp おき、位相と明るさ(0.6..1.0)は線ごとにずらす。
 // 近い線(前後1本)だけを見れば足りる(うねりは ±2.5dp で、間隔 11dp より小さい)
 float finCover(float xd, float yd) {
     float aa = 0.5 / dp;
@@ -70,7 +77,8 @@ float finCover(float xd, float yd) {
         float i = fi0 + float(k);
         float xc = i * FIN_STEP + FIN_WAVE_AMP * sin(2.0 * PI * yd / FIN_WAVE_LEN + i * 2.399);
         float d = abs(xd - xc);
-        cov = max(cov, 1.0 - smoothstep(FIN_HALF - aa, FIN_HALF + aa, d));
+        float bright = 0.6 + 0.4 * hash1(i);
+        cov = max(cov, bright * (1.0 - smoothstep(FIN_HALF - aa, FIN_HALF + aa, d)));
     }
     return cov;
 }
@@ -90,13 +98,23 @@ float3 bandFace(float3 gl, float3 gs, float3 am, float s, float xd, float kf) {
 }
 
 // 琥珀の窓。wv は窓の中の位置(0 = 上、1 = 下)。上に灯りの列、縦のカーテンのひだ、縦の桟。
+// 灯りは間隔を大きくずらさず(おおよそ 9dp)、位置(横・縦)と明るさを灯りごとに揺らす。
 float3 windowCol(float3 am, float3 lc, float wv, float xd, float vF, float dp2) {
     float3 w = mix(am * 1.1, am * 0.85, smoothstep(0.0, 0.5, wv));
     w = mix(w, am * 0.3, smoothstep(0.4, 1.0, wv));
-    // 天井の灯り(点を横に 9dp おきに並べる。芯は HDR で白を少し超える)
-    float dx = (fract(xd / 9.0) - 0.5) * 9.0;
-    float dy = wv * WIN_H - 2.7;
-    w += lc * 1.2 * exp(-(dx * dx + dy * dy) / 0.8);
+    // 天井の灯り(芯は HDR で白を少し超える)
+    float n = floor(xd / LIGHT_PITCH);
+    float lights = 0.0;
+    for (int k = -1; k <= 1; k++) {
+        float idx = n + float(k);
+        float cx = (idx + 0.5) * LIGHT_PITCH + 2.2 * (hash1(idx + 40.0) - 0.5) * 2.0;
+        float cy = 2.7 + 1.2 * (hash1(idx + 80.0) - 0.5) * 2.0;
+        float b = 0.55 + 0.45 * hash1(idx + 120.0);
+        float dx = xd - cx;
+        float dy = wv * WIN_H - cy;
+        lights += b * exp(-(dx * dx + dy * dy) / 0.8);
+    }
+    w += lc * 1.2 * lights;
     // 縦の薄いカーテン(振幅 6%)
     w *= 1.0 + 0.06 * sin(xd * 2.0 * PI / 3.3 + floor(vF / BAND_PITCH) * 0.7);
     // 縦の桟(4分割、1dp 幅、30%)
@@ -129,38 +147,38 @@ half4 main(float2 p) {
 
     // ---- 光の線(帯ごとに1本。上縁に細い芯と、上へのにじみ) ----
     float3 lineAcc = float3(0.0);
-    float3 facadeCol = float3(0.0);
-    float3 towerCol = float3(0.0);
     float3 haze = mix(tw, fi, 0.4) + am * 0.02;
     float warm = exp(min(vF, 0.0) / 60.0);       // 足元の帯の光が塔の下を暖める(上へ 60dp で減衰)
 
     // ---- 塔(上〜中) ----
     float fc = finCover(xd, yd);
     float3 finCol = mix(fi, am * 0.6, 0.4 * warm);
-    towerCol = mix(mix(haze, tw, smoothstep(0.0, 90.0, yd)), finCol, fc * FIN_COVER);
+    float3 towerCol = mix(mix(haze, tw, smoothstep(0.0, 90.0, yd)), finCol, fc * FIN_COVER);
     towerCol += am * 0.10 * warm;
 
-    // ---- 足元: 帯と窓 ----
+    // ---- 足元: 窓(地)。帯はこの上に、塔の側へもはみ出して描く ----
     float wv;
     if (vF >= LOWER_GLASS) {
         wv = clamp((vF - LOWER_GLASS) / max(H - LOWER_GLASS, 1.0), 0.0, 1.0);
     } else {
         wv = clamp((mod(vF, BAND_PITCH) - BAND_H) / WIN_H, 0.0, 1.0);
     }
-    facadeCol = windowCol(am, lc, wv, xd, vF, dpW);
+    float3 facadeCol = windowCol(am, lc, wv, xd, vF, dpW);
+    // 窓の地は足元より上(vF < 0)では使わない。塔の色を基調にする
+    float3 col = vF < 0.0 ? towerCol : facadeCol;
 
     for (int k = 0; k < 3; k++) {
         float kf = float(k);
-        // 帯の上縁は緩く波打つ(2本の正弦を重ねる。振幅 3dp 前後)
+        // 帯の上縁は緩く波打つ(2本の正弦を重ねる)。波の上がり側は塔の上まで届く
         float e = kf * BAND_PITCH
             + 4.5 * sin(2.0 * PI * xd / 260.0 + kf * 1.7)
             + 2.4 * sin(2.0 * PI * xd / 120.0 + kf * 0.9 + 0.5);
         float s = vF - e;
-        // 帯の面
-        if (kf < BAND_COUNT && vF >= 0.0) {
+        // 帯の面(vF で切らない。上縁が facadeTop より上へ出る所も帯として描く)
+        if (kf < BAND_COUNT) {
             float cov = smoothstep(-aa, aa, s) * (1.0 - smoothstep(BAND_H - aa, BAND_H + aa, s));
             if (cov > 0.0) {
-                facadeCol = mix(facadeCol, bandFace(gl, gs, am, max(s, 0.0), xd, kf), cov);
+                col = mix(col, bandFace(gl, gs, am, max(s, 0.0), xd, kf), cov);
             }
         }
         // 上縁の光の線: 芯(幅 1.2dp)と、上へのにじみ(3dp)
@@ -170,7 +188,6 @@ half4 main(float2 p) {
     }
     lineAcc *= gate;
 
-    float3 col = vF < 0.0 ? towerCol : facadeCol;
     col += lineAcc;
 
     // 通常は lineCore で止まり、HDR では白の hdr 倍まで出す

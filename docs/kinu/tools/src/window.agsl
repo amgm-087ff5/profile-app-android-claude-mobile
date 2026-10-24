@@ -53,7 +53,9 @@ half4 main(float2 p) {
     col += toLin(amberHi) * (lamp * 1.1 + ceilBand) * smoothstep(0.3, 0.0, v);
 
     // 縦の薄いカーテン: 柔らかい縦縞(振幅 11%。見本のひだに合わせて SPEC の 6% より強め)
-    float fold = 0.5 + 0.5 * sin(p.x / dp * (PI2 / 9.0) + seed * 3.1 + 0.6 * sin(p.y / dp * 0.05));
+    // 布のひだの間隔はまばら。x をゆるく歪ませて周期を不揃いにする(約 74dp と 27dp のうねりを重ねる)
+    float xw = p.x + dp * (4.0 * sin(p.x / dp * 0.085 + seed * 2.0) + 2.0 * sin(p.x / dp * 0.23 + seed * 5.0));
+    float fold = 0.5 + 0.5 * sin(xw / dp * (PI2 / 9.0) + seed * 3.1 + 0.6 * sin(p.y / dp * 0.05));
     col *= 1.0 - 0.11 * fold;
 
     // 縦の桟: 4分割、幅 1dp、#7A5A40 30%

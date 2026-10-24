@@ -52,7 +52,6 @@ half4 main(float2 p) {
     // ---- 面の明るさ: 上は赤茶の陰、下へ向かって琥珀の照り返しで明るい。上 20% で縁が丸く回り込む ----
     float3 shade = toLin(goldShade);
     float3 lit = toLin(goldLit);
-    float3 deep = toLin(goldDeep);
     float wrap = exp(-max(v, 0.0) * H / 5.0);            // 縁の回り込みの明るさ(上の数 dp)
     float3 base = mix(shade, lit, smoothstep(0.7, 1.0, v) * 0.8);
     base += shade * 0.35 * wrap;
@@ -60,7 +59,9 @@ half4 main(float2 p) {
     // 緩い溝: 下へ向かってゆるく凹む(うねりつき)
     float gv = 0.62 + 0.05 * sin(PI2 * u + seed * 2.3);
     float groove = exp(-pow((v - gv) * H / 2.6, 2.0));
-    base = mix(base, deep, 0.5 * groove);
+    // 溝は暗くしすぎず、赤茶の彩度を保つ(輝度はほぼ保ったまま赤へ寄せる。灰色に転ばない)
+    float3 warmGroove = base * float3(1.16, 0.96, 0.76);
+    base = mix(base, warmGroove, 0.5 * groove);
 
     // ---- つや: 横に伸びるヘアライン。うねりは 0.5〜1.5 周期。指の x へ寄せる ----
     bool touchOn = touch.x >= 0.0;
@@ -77,7 +78,12 @@ half4 main(float2 p) {
     float halo = exp(d / 3.0) * step(d, 0.0) * 0.45;   // 縁の上へ 3dp のにじみ(下には出さない)
     float wash = exp(-max(d, 0.0) / max(0.3 * H, 0.5)) * 0.35;
     float3 coreCol = toLin(lineCore);
-    float3 lightCol = coreCol * amt * (core * 1.9 + halo * 0.6) + coreCol * amt * wash * 0.5;
+    // 芯の下側の暖色のにじみ(lineEdge #EBA874 相当。2〜4dp で帯の面へ柔らかく落ちる)。上側は部品の外なので無し
+    float3 edgeCol = toLin(half4(0.9216, 0.6588, 0.4549, 1.0));
+    float below = max(d, 0.0) * step(0.0, d);
+    float warm = (exp(-below / 1.2) * 0.8 + exp(-below / 3.0) * 0.45) * step(0.0, d);
+    float3 lightCol = coreCol * amt * (core * 1.9 + halo * 0.6) + coreCol * amt * wash * 0.5
+        + edgeCol * amt * warm * 0.7;
 
     float3 lin = base + sheen + lightCol;
     float3 shown = toDisplay(toneMap(lin, max(hdr, 1.0)));
