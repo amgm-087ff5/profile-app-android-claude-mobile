@@ -12,6 +12,9 @@ enum class ThemeStyle {
 
     /** 明るいグレーの板に、柔らかい影の丸いボタン。縁から光がにじむ波が横切る(ui/porcelain) */
     PORCELAIN,
+
+    /** 濡れた黒い岩の地に、苔のクッションのボタンと磨いた石の名刺 (ui/moss) */
+    MOSS,
     ;
 
     companion object {

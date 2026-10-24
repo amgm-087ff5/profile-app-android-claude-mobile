@@ -25,5 +25,7 @@
     <string name="theme_edgelit_description">グレージュの壁に、縁が光るすりガラスの板が浮かぶ</string>
     <string name="theme_porcelain">Porcelain(陶器)</string>
     <string name="theme_porcelain_description">明るいグレーの板に、柔らかい影の丸いボタン</string>
+    <string name="theme_moss">Moss(苔岩)</string>
+    <string name="theme_moss_description">雨に濡れた黒い岩に、苔のクッションのボタンと磨いた石の名刺</string>
     <string name="close">閉じる</string>
 </resources>

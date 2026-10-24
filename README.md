@@ -54,12 +54,13 @@ com.example.businesscard
 
 ### 見た目の切り替え
 
-見た目は2種類あり、一覧の右上のボタンから切り替える(選んだ見た目は DataStore に保存)。初めて開いたときは Edgelit(`ThemeStyle.DEFAULT`)。
+見た目は3種類あり、一覧の右上のボタンから切り替える(選んだ見た目は DataStore に保存)。初めて開いたときは Edgelit(`ThemeStyle.DEFAULT`)。
 
 | 見た目 | 中身 | 描き方 |
 |---|---|---|
 | Edgelit(すりガラス) | `ui/glass/` `ui/component/` `ui/theme/` | 上記 |
 | Porcelain(陶器、仮称) | `ui/porcelain/` | 明るいグレーの板に、柔らかい影の丸いボタン。板の中ほどを波打つ板が横切り、その縁の裏に隠れた帯状の光源が奥の面を照らす。光の量(帯に沿った照度の積分・透過)を AGSL で計算し、HDR 対応の画面では光の芯を白より明るく光らせる(`PorcelainShaders.kt`)。影は BlurMaskFilter |
+| Moss(苔岩、仮称) | `ui/moss/` | 雨に濡れた黒い岩の地に、苔のクッションのボタン(主操作)と磨いた石の名刺・入力欄。苔と石は AGSL のシェーダーで描き、押すと沈み込んで戻る。危険な操作は杉の枯れ葉の赤茶 |
 
 画面(一覧・表示・編集)は `ui/designsystem/` の共通部品(`AppButton` など)だけを使い、部品が見た目ごとの実装に振り分ける。
 見た目を増やすときは `ThemeStyle` に種類を足し、`ui/designsystem/` の分岐を足す(画面は変えなくてよい)。
@@ -67,6 +68,7 @@ com.example.businesscard
 ```
 ui/designsystem/   App* の共通部品と、見た目ごとの余白(AppTheme.dimens)
 ui/porcelain/      Porcelain のトークン・部品・シェーダー・カタログ
+ui/moss/           Moss のトークン・部品・シェーダー・カタログ
 ui/settings/       見た目を選ぶダイアログ
 domain/model/ThemeStyle.kt, domain/repository/UserPreferencesRepository.kt
 data/preferences/  DataStore の実装
