@@ -10,6 +10,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.businesscard.domain.model.ThemeStyle
+import com.example.businesscard.ui.koke.DefaultKokeColors
+import com.example.businesscard.ui.koke.KokeMaterialShapes
+import com.example.businesscard.ui.koke.KokeTypography
+import com.example.businesscard.ui.koke.LocalKokeColors
+import com.example.businesscard.ui.koke.kokeColorScheme
 import com.example.businesscard.ui.porcelain.DefaultPorcelainColors
 import com.example.businesscard.ui.porcelain.LocalPorcelainColors
 import com.example.businesscard.ui.porcelain.PorcelainMaterialShapes
@@ -73,6 +78,19 @@ private val PorcelainDimens = AppDimens(
     detailSpacing = 24.dp,
 )
 
+private val KokeDimens = AppDimens(
+    screenHorizontal = 24.dp,
+    listSpacing = 28.dp,
+    fieldSpacing = 20.dp,
+    contentTop = 8.dp,
+    contentBottom = 40.dp,
+    actionsTop = 12.dp,
+    actionsBottom = 24.dp,
+    // 苔が縁からはみ出す分の余白を取る
+    detailPadding = PaddingValues(start = 24.dp, top = 24.dp, end = 28.dp, bottom = 28.dp),
+    detailSpacing = 28.dp,
+)
+
 /** 見た目ごとの余白・間隔。 */
 object AppTheme {
     val dimens: AppDimens
@@ -81,6 +99,7 @@ object AppTheme {
         get() = when (LocalThemeStyle.current) {
             ThemeStyle.EDGELIT -> EdgelitDimens
             ThemeStyle.PORCELAIN -> PorcelainDimens
+            ThemeStyle.KOKE -> KokeDimens
         }
 }
 
@@ -98,15 +117,27 @@ fun BusinessCardAppTheme(style: ThemeStyle, content: @Composable () -> Unit) {
         val edgelit = MaterialTheme.colorScheme
         val edgelitType = MaterialTheme.typography
         val edgelitShapes = MaterialTheme.shapes
-        val porcelain = style == ThemeStyle.PORCELAIN
         CompositionLocalProvider(
             LocalThemeStyle provides style,
             LocalPorcelainColors provides DefaultPorcelainColors,
+            LocalKokeColors provides DefaultKokeColors,
         ) {
             MaterialTheme(
-                colorScheme = if (porcelain) porcelainColorScheme(DefaultPorcelainColors) else edgelit,
-                typography = if (porcelain) PorcelainTypography else edgelitType,
-                shapes = if (porcelain) PorcelainMaterialShapes else edgelitShapes,
+                colorScheme = when (style) {
+                    ThemeStyle.EDGELIT -> edgelit
+                    ThemeStyle.PORCELAIN -> porcelainColorScheme(DefaultPorcelainColors)
+                    ThemeStyle.KOKE -> kokeColorScheme(DefaultKokeColors)
+                },
+                typography = when (style) {
+                    ThemeStyle.EDGELIT -> edgelitType
+                    ThemeStyle.PORCELAIN -> PorcelainTypography
+                    ThemeStyle.KOKE -> KokeTypography
+                },
+                shapes = when (style) {
+                    ThemeStyle.EDGELIT -> edgelitShapes
+                    ThemeStyle.PORCELAIN -> PorcelainMaterialShapes
+                    ThemeStyle.KOKE -> KokeMaterialShapes
+                },
                 content = content,
             )
         }
@@ -118,4 +149,5 @@ val ThemeStyle.isDark: Boolean
     get() = when (this) {
         ThemeStyle.EDGELIT -> true
         ThemeStyle.PORCELAIN -> false
+        ThemeStyle.KOKE -> true
     }

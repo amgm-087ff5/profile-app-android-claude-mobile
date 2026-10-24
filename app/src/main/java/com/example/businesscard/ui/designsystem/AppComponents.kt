@@ -38,6 +38,20 @@ import com.example.businesscard.ui.component.SoftGlassScaffold
 import com.example.businesscard.ui.component.SoftGlassTopBar
 import com.example.businesscard.ui.component.glassSurface
 import com.example.businesscard.ui.glass.LocalGlassScene
+import com.example.businesscard.ui.koke.KokeBackground
+import com.example.businesscard.ui.koke.KokeBusinessCard
+import com.example.businesscard.ui.koke.KokeButton
+import com.example.businesscard.ui.koke.KokeChoice
+import com.example.businesscard.ui.koke.KokeConfirmDialog
+import com.example.businesscard.ui.koke.KokeDialog
+import com.example.businesscard.ui.koke.KokeIconButton
+import com.example.businesscard.ui.koke.KokeMessage
+import com.example.businesscard.ui.koke.KokeScaffold
+import com.example.businesscard.ui.koke.KokeTextField
+import com.example.businesscard.ui.koke.KokeTheme
+import com.example.businesscard.ui.koke.KokeTone
+import com.example.businesscard.ui.koke.KokeTopBar
+import com.example.businesscard.ui.koke.KokeType
 import com.example.businesscard.ui.porcelain.PorcelainBackground
 import com.example.businesscard.ui.porcelain.PorcelainBusinessCard
 import com.example.businesscard.ui.porcelain.PorcelainButton
@@ -57,7 +71,7 @@ import com.example.businesscard.ui.theme.SoftGlassTheme
 import com.example.businesscard.ui.theme.SoftGlassType
 
 /*
- * 画面が使う共通部品の窓口。画面はここの App* だけを使い、見た目(Edgelit / Porcelain)を知らない。
+ * 画面が使う共通部品の窓口。画面はここの App* だけを使い、見た目(Edgelit / Porcelain / Koke)を知らない。
  * 中身は LocalThemeStyle を見て、それぞれのデザインシステムの部品に振り分ける。
  *
  * 見た目を増やすときは、ThemeStyle に種類を足し、ここの when に分岐を足す(画面は変えなくてよい)。
@@ -65,9 +79,9 @@ import com.example.businesscard.ui.theme.SoftGlassType
 
 /**
  * ボタンの役割。
- *  - Primary: その画面の主操作(1画面に1つまで)。Edgelit では強く光り、Porcelain では濃い板
- *  - Secondary: 副操作。Edgelit では中くらいの光、Porcelain では明るい板
- *  - Danger: 取り消せない操作。危険色の文字
+ *  - Primary: その画面の主操作(1画面に1つまで)。Edgelit では強く光り、Porcelain では濃い板、Koke では墨緑の板
+ *  - Secondary: 副操作。Edgelit では中くらいの光、Porcelain では明るい板、Koke では白い板
+ *  - Danger: 取り消せない操作。危険色の文字(Koke では赤褐色)
  */
 enum class AppButtonStyle { Primary, Secondary, Danger }
 
@@ -82,6 +96,11 @@ private fun AppButtonStyle.toPorcelainTone() = when (this) {
     AppButtonStyle.Secondary, AppButtonStyle.Danger -> PorcelainTone.Light
 }
 
+private fun AppButtonStyle.toKokeTone() = when (this) {
+    AppButtonStyle.Primary -> KokeTone.Primary
+    AppButtonStyle.Secondary, AppButtonStyle.Danger -> KokeTone.Secondary
+}
+
 /** 全画面共通の骨格(背景・上のバー・下の操作・中身)。 */
 @Composable
 fun AppScaffold(
@@ -93,6 +112,7 @@ fun AppScaffold(
     when (LocalThemeStyle.current) {
         ThemeStyle.EDGELIT -> SoftGlassScaffold(modifier, topBar, bottomBar, content)
         ThemeStyle.PORCELAIN -> PorcelainScaffold(modifier, topBar, bottomBar, content)
+        ThemeStyle.KOKE -> KokeScaffold(modifier, topBar, bottomBar, content)
     }
 }
 
@@ -102,6 +122,7 @@ fun AppBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.(
     when (LocalThemeStyle.current) {
         ThemeStyle.EDGELIT -> SoftGlassBackground(modifier, content)
         ThemeStyle.PORCELAIN -> PorcelainBackground(modifier, content = content)
+        ThemeStyle.KOKE -> KokeBackground(modifier, content = content)
     }
 }
 
@@ -133,6 +154,7 @@ fun AppTopBar(
             }
         }
         ThemeStyle.PORCELAIN -> PorcelainTopBar(title = title, modifier = modifier, onBack = onBack, actions = actions)
+        ThemeStyle.KOKE -> KokeTopBar(title = title, modifier = modifier, onBack = onBack, actions = actions)
     }
 }
 
@@ -156,6 +178,18 @@ fun AppButton(
                 AppButtonStyle.Primary -> PorcelainTheme.colors.onDark
                 AppButtonStyle.Secondary -> PorcelainTheme.colors.ink
                 AppButtonStyle.Danger -> PorcelainTheme.colors.danger
+            },
+        )
+        ThemeStyle.KOKE -> KokeButton(
+            text = text,
+            onClick = onClick,
+            modifier = modifier,
+            tone = style.toKokeTone(),
+            leadingIcon = icon,
+            contentColor = when (style) {
+                AppButtonStyle.Primary -> KokeTheme.colors.onPrimary
+                AppButtonStyle.Secondary -> KokeTheme.colors.ink
+                AppButtonStyle.Danger -> KokeTheme.colors.danger
             },
         )
     }
@@ -188,6 +222,18 @@ fun AppIconButton(
                 AppButtonStyle.Primary -> PorcelainTheme.colors.onDark
                 AppButtonStyle.Secondary -> PorcelainTheme.colors.ink
                 AppButtonStyle.Danger -> PorcelainTheme.colors.danger
+            },
+        )
+        ThemeStyle.KOKE -> KokeIconButton(
+            onClick = onClick,
+            icon = icon,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            tone = style.toKokeTone(),
+            contentColor = when (style) {
+                AppButtonStyle.Primary -> KokeTheme.colors.onPrimary
+                AppButtonStyle.Secondary -> KokeTheme.colors.ink
+                AppButtonStyle.Danger -> KokeTheme.colors.danger
             },
         )
     }
@@ -228,6 +274,17 @@ fun AppTextField(
             errorText = errorText,
             keyboardOptions = keyboardOptions,
         )
+        ThemeStyle.KOKE -> KokeTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = label,
+            modifier = modifier,
+            placeholder = placeholder,
+            leadingIcon = leadingIcon,
+            isError = isError,
+            errorText = errorText,
+            keyboardOptions = keyboardOptions,
+        )
     }
 }
 
@@ -237,6 +294,7 @@ fun AppBusinessCard(card: BusinessCard, modifier: Modifier = Modifier, onClick: 
     when (LocalThemeStyle.current) {
         ThemeStyle.EDGELIT -> BusinessCardView(card = card, modifier = modifier, onClick = onClick)
         ThemeStyle.PORCELAIN -> PorcelainBusinessCard(card = card, modifier = modifier, onClick = onClick)
+        ThemeStyle.KOKE -> KokeBusinessCard(card = card, modifier = modifier, onClick = onClick)
     }
 }
 
@@ -254,6 +312,7 @@ fun AppMessage(text: String, modifier: Modifier = Modifier) {
                 .padding(horizontal = 24.dp, vertical = 20.dp),
         )
         ThemeStyle.PORCELAIN -> PorcelainMessage(text = text, modifier = modifier)
+        ThemeStyle.KOKE -> KokeMessage(text = text, modifier = modifier)
     }
 }
 
@@ -270,6 +329,7 @@ fun AppConfirmDialog(
     when (LocalThemeStyle.current) {
         ThemeStyle.EDGELIT -> GlassConfirmDialog(title, message, confirmLabel, dismissLabel, onConfirm, onDismiss)
         ThemeStyle.PORCELAIN -> PorcelainConfirmDialog(title, message, confirmLabel, dismissLabel, onConfirm, onDismiss)
+        ThemeStyle.KOKE -> KokeConfirmDialog(title, message, confirmLabel, dismissLabel, onConfirm, onDismiss)
     }
 }
 
@@ -303,6 +363,7 @@ fun AppDialog(
             }
         }
         ThemeStyle.PORCELAIN -> PorcelainDialog(title = title, onDismiss = onDismiss, message = message, content = content)
+        ThemeStyle.KOKE -> KokeDialog(title = title, onDismiss = onDismiss, message = message, content = content)
     }
 }
 
@@ -318,6 +379,7 @@ fun AppChoice(text: String, selected: Boolean, onClick: () -> Unit, modifier: Mo
             icon = if (selected) Icons.Filled.Check else null,
         )
         ThemeStyle.PORCELAIN -> PorcelainChoice(text = text, selected = selected, onClick = onClick, modifier = modifier)
+        ThemeStyle.KOKE -> KokeChoice(text = text, selected = selected, onClick = onClick, modifier = modifier)
     }
 }
 
@@ -327,5 +389,6 @@ fun AppCaption(text: String, modifier: Modifier = Modifier) {
     when (LocalThemeStyle.current) {
         ThemeStyle.EDGELIT -> Text(text = text, style = SoftGlassType.caption, color = SoftGlassTheme.colors.inkMuted, modifier = modifier)
         ThemeStyle.PORCELAIN -> Text(text = text, style = PorcelainType.caption, color = PorcelainTheme.colors.inkMuted, modifier = modifier)
+        ThemeStyle.KOKE -> Text(text = text, style = KokeType.caption, color = KokeTheme.colors.inkMuted, modifier = modifier)
     }
 }

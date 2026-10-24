@@ -5,8 +5,8 @@ set -euo pipefail
 
 PKG=com.example.businesscard
 RUNNER="$PKG.test/androidx.test.runner.AndroidJUnitRunner"
-# Edgelit と Porcelain の両方を撮る(am instrument の class はカンマ区切りで複数指定できる)
-CLASS="$PKG.ui.GlassScreenshotTest,$PKG.ui.PorcelainScreenshotTest"
+# Edgelit と Porcelain と Koke の全部を撮る(am instrument の class はカンマ区切りで複数指定できる)
+CLASS="$PKG.ui.GlassScreenshotTest,$PKG.ui.PorcelainScreenshotTest,$PKG.ui.KokeScreenshotTest"
 LOG=instrument.log
 : > "$LOG"
 

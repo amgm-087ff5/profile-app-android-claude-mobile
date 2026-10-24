@@ -54,12 +54,13 @@ com.example.businesscard
 
 ### 見た目の切り替え
 
-見た目は2種類あり、一覧の右上のボタンから切り替える(選んだ見た目は DataStore に保存)。初めて開いたときは Edgelit(`ThemeStyle.DEFAULT`)。
+見た目は3種類あり、一覧の右上のボタンから切り替える(選んだ見た目は DataStore に保存)。初めて開いたときは Edgelit(`ThemeStyle.DEFAULT`)。
 
 | 見た目 | 中身 | 描き方 |
 |---|---|---|
 | Edgelit(すりガラス) | `ui/glass/` `ui/component/` `ui/theme/` | 上記 |
 | Porcelain(陶器、仮称) | `ui/porcelain/` | 明るいグレーの板に、柔らかい影の丸いボタン。板の中ほどを波打つ板が横切り、その縁の裏に隠れた帯状の光源が奥の面を照らす。光の量(帯に沿った照度の積分・透過)を AGSL で計算し、HDR 対応の画面では光の芯を白より明るく光らせる(`PorcelainShaders.kt`)。影は BlurMaskFilter |
+| Koke(苔むす) | `ui/koke/` | 平らでモダンな部品に、精巧な苔が部分的に生える。苔は AGSL のシェーダーで計算して描き、押すと指の近くの株が沈んで戻る |
 
 画面(一覧・表示・編集)は `ui/designsystem/` の共通部品(`AppButton` など)だけを使い、部品が見た目ごとの実装に振り分ける。
 見た目を増やすときは `ThemeStyle` に種類を足し、`ui/designsystem/` の分岐を足す(画面は変えなくてよい)。

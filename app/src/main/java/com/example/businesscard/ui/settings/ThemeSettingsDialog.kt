@@ -71,12 +71,14 @@ private val ThemeStyle.titleRes: Int
     get() = when (this) {
         ThemeStyle.EDGELIT -> R.string.theme_edgelit
         ThemeStyle.PORCELAIN -> R.string.theme_porcelain
+        ThemeStyle.KOKE -> R.string.theme_koke
     }
 
 private val ThemeStyle.descriptionRes: Int
     get() = when (this) {
         ThemeStyle.EDGELIT -> R.string.theme_edgelit_description
         ThemeStyle.PORCELAIN -> R.string.theme_porcelain_description
+        ThemeStyle.KOKE -> R.string.theme_koke_description
     }
 
 @Preview(name = "Porcelain")
@@ -84,5 +86,13 @@ private val ThemeStyle.descriptionRes: Int
 private fun ThemeSettingsDialogPreview() {
     BusinessCardAppTheme(ThemeStyle.PORCELAIN) {
         ThemeSettingsDialog(uiState = ThemeSettingsUiState(selected = ThemeStyle.PORCELAIN), onSelect = {}, onDismiss = {})
+    }
+}
+
+@Preview(name = "Koke")
+@Composable
+private fun ThemeSettingsDialogKokePreview() {
+    BusinessCardAppTheme(ThemeStyle.KOKE) {
+        ThemeSettingsDialog(uiState = ThemeSettingsUiState(selected = ThemeStyle.KOKE), onSelect = {}, onDismiss = {})
     }
 }

@@ -12,6 +12,9 @@ enum class ThemeStyle {
 
     /** 明るいグレーの板に、柔らかい影の丸いボタン。縁から光がにじむ波が横切る(ui/porcelain) */
     PORCELAIN,
+
+    /** 平らでモダンな部品に、精巧な苔が部分的に生える (ui/koke) */
+    KOKE,
     ;
 
     companion object {
