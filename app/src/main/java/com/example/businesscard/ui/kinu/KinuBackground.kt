@@ -24,8 +24,8 @@ import androidx.compose.ui.unit.dp
 import com.example.businesscard.ui.glass.LocalGlowHeadroom
 
 /**
- * 画面全体の背景。黒い塔と、足元に重なる金の帯・琥珀の窓を BACKGROUND シェーダーで描く。
- * 下の [KinuDimens.FACADE_FRACTION] が足元(帯と窓)。画面を開くと光の線が左から灯る。
+ * 画面全体の背景。トープの陰の面と、上下に重なる金の帯・琥珀の窓を BACKGROUND シェーダーで描く。
+ * 帯の重なりは上下それぞれ画面高の 16%(シェーダー側の定数)。画面を開くと光の線が左から灯る。
  */
 @Composable
 fun KinuBackground(
@@ -44,13 +44,13 @@ fun KinuBackground(
                     val brush = ShaderBrush(shader)
                     shader.setFloatUniform("size", size.width, size.height)
                     shader.setFloatUniform("dp", 1.dp.toPx())
-                    shader.setFloatUniform("facadeTop", size.height * (1f - KinuDimens.FACADE_FRACTION))
                     shader.setFloatUniform("hdr", hdr)
-                    shader.setColorUniform("tower", c.tower.toArgb())
-                    shader.setColorUniform("fin", c.fin.toArgb())
+                    shader.setColorUniform("facadeShade", c.facadeShade.toArgb())
+                    shader.setColorUniform("facadeMauve", c.facadeMauve.toArgb())
+                    shader.setColorUniform("foldGold", c.foldGold.toArgb())
                     shader.setColorUniform("goldLit", c.goldLit.toArgb())
-                    shader.setColorUniform("goldShade", c.goldShade.toArgb())
                     shader.setColorUniform("amber", c.amber.toArgb())
+                    shader.setColorUniform("amberHi", c.amberHi.toArgb())
                     shader.setColorUniform("lineCore", c.lineCore.toArgb())
                     onDrawBehind {
                         shader.setFloatUniform("ignite", ignite.value)
@@ -82,14 +82,14 @@ fun KinuScaffold(
             contentColor = c.champagne,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = topBar,
-            // 操作の後ろに、透明から塔の色へ薄く落ちる幕を敷き、足元の帯が操作の後ろで少し沈むように見せる
+            // 操作の後ろに、透明から金の深い色(60%)へ薄く落ちる幕を敷き、足元の帯が操作の後ろで少し沈むように見せる
             bottomBar = {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color.Transparent, c.tower.copy(alpha = 0.7f)),
+                                listOf(Color.Transparent, c.goldDeep.copy(alpha = 0.6f)),
                             ),
                         ),
                 ) {

@@ -31,14 +31,14 @@ fun KinuTheme(content: @Composable () -> Unit) {
 
 /**
  * Material3 の ColorScheme への対応づけ。夜の配色なので darkColorScheme を土台にする。
- * 金の帯の上の文字は焦げ茶(ink)、夜のガラスの上の文字はシャンパン(champagne)。
+ * 金の帯・窓の上の文字は焦げ茶(ink)、サテンと背景の上の文字はシャンパン(champagne)。
  */
 fun kinuColorScheme(c: KinuColors): ColorScheme = darkColorScheme(
     primary = c.goldLit,
     onPrimary = c.ink,
     secondary = c.amber,
     onSecondary = c.ink,
-    background = c.tower,
+    background = c.facadeShade,
     onBackground = c.champagne,
     surface = c.glassTop,
     onSurface = c.champagne,

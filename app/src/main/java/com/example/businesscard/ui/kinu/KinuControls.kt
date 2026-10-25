@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.text.BasicTextField
@@ -51,15 +53,18 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.businesscard.R
 import com.example.businesscard.ui.glass.rememberGlassFeedback
 
-/** 部品の色の種類。Gold は金の帯(主)、Night は夜のガラス(副)。 */
+/** 部品の色の種類。Gold は金の帯(主)、Night はサテンの金属(副)。 */
 enum class KinuTone { Gold, Night }
 
-/** 面の上の文字色。金の帯は焦げ茶(ink)、夜のガラスはシャンパン。 */
+/** 面の上の文字色。金の帯・窓は焦げ茶(ink)、サテンはシャンパン(champagne)。 */
 @Composable
 private fun kinuTextOn(tone: KinuTone): Color =
     if (tone == KinuTone.Gold) KinuTheme.colors.ink else KinuTheme.colors.champagne
 
-/** 主ボタン(金の帯)・副ボタン(夜のガラス)。押すと光の線が強まる。 */
+/**
+ * 主ボタン(金の帯)・副ボタン(サテン)。押すと光の線が強まる。
+ * contentColor が危険色(Night のとき)は、文字を champagne にして先頭に小さな危険色の印を付ける。
+ */
 @Composable
 fun KinuButton(
     text: String,
@@ -76,7 +81,13 @@ fun KinuButton(
     val press = rememberKinuPress(interaction, feedback)
     val shape = KinuShapes.control
     val gold = tone == KinuTone.Gold && enabled
-    val ink = if (enabled) contentColor else c.champagneMuted
+    // 危険(Night の contentColor = danger)は、サテンの上の champagne の文字 + 先頭の小さな危険色の印
+    val danger = tone == KinuTone.Night && enabled && contentColor == c.danger
+    val ink = when {
+        !enabled -> c.champagneMuted
+        danger -> c.champagne
+        else -> contentColor
+    }
     val surface = if (gold) {
         Modifier.kinuRibbon(
             shape,
@@ -85,7 +96,7 @@ fun KinuButton(
             seed = 0.31f,
         )
     } else {
-        Modifier.kinuNightGlass(
+        Modifier.kinuSatin(
             shape,
             line = { (if (enabled) KinuLight.LINE_NIGHT else 0f) + KinuLight.LINE_PRESS_BOOST * press.value },
             touch = { press.touch },
@@ -111,6 +122,9 @@ fun KinuButton(
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (danger) {
+            Box(modifier = Modifier.size(6.dp).background(c.danger, CircleShape))
+        }
         if (leadingIcon != null) {
             Icon(imageVector = leadingIcon, contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
         }
@@ -118,7 +132,7 @@ fun KinuButton(
     }
 }
 
-/** 丸くない四角のアイコンボタン(角は 14dp)。金の帯か夜のガラス。 */
+/** 丸くない四角のアイコンボタン(角は 14dp)。金の帯かサテン。 */
 @Composable
 fun KinuIconButton(
     onClick: () -> Unit,
@@ -140,7 +154,7 @@ fun KinuIconButton(
             seed = 0.52f,
         )
     } else {
-        Modifier.kinuNightGlass(
+        Modifier.kinuSatin(
             shape,
             line = { KinuLight.LINE_NIGHT + KinuLight.LINE_PRESS_BOOST * press.value },
             touch = { press.touch },
@@ -173,7 +187,8 @@ private fun KinuLabel(text: String, color: Color, modifier: Modifier = Modifier)
 }
 
 /**
- * 入力欄。夜のガラスの中に入力する。入力中は光の線が強まり、奥が琥珀ににじむ。エラーは注記と文字が危険色。
+ * 入力欄。琥珀の窓(薄いクリームのガラス)に入力する。周りは 1dp の縁(エラー時は危険色)。
+ * 入力中は窓の灯りが強まる。エラーの注記は champagne の文字の先頭に危険色の小さな印。
  */
 @Composable
 fun KinuTextField(
@@ -194,7 +209,7 @@ fun KinuTextField(
     Column(modifier = modifier) {
         KinuLabel(
             text = label,
-            color = if (isError) c.danger else c.champagneMuted,
+            color = c.champagne,
             modifier = Modifier.padding(start = 6.dp),
         )
         Spacer(Modifier.height(8.dp))
@@ -208,8 +223,8 @@ fun KinuTextField(
                     if (isError && errorText != null) error(errorText)
                 },
             singleLine = true,
-            textStyle = KinuType.field.copy(color = c.champagne),
-            cursorBrush = SolidColor(c.champagne),
+            textStyle = KinuType.field.copy(color = c.ink),
+            cursorBrush = SolidColor(c.ink),
             keyboardOptions = keyboardOptions,
             interactionSource = interaction,
             decorationBox = { innerTextField ->
@@ -217,11 +232,8 @@ fun KinuTextField(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(KinuDimens.controlHeight)
-                        .kinuNightGlass(
-                            KinuShapes.control,
-                            line = { if (focused || isError) KinuLight.LINE_FOCUSED else KinuLight.LINE_NIGHT },
-                            ember = { if (focused) 0.6f else 0f },
-                        )
+                        .kinuWindow(KinuShapes.control, glow = { if (focused) 0.8f else 0.35f })
+                        .border(1.dp, if (isError) c.danger else c.rim, KinuShapes.control)
                         .padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -230,13 +242,13 @@ fun KinuTextField(
                         Icon(
                             imageVector = leadingIcon,
                             contentDescription = null,
-                            tint = c.champagneMuted,
+                            tint = c.ink,
                             modifier = Modifier.size(20.dp),
                         )
                     }
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                         if (value.isEmpty() && placeholder != null) {
-                            Text(text = placeholder, style = KinuType.field, color = c.champagneMuted, maxLines = 1)
+                            Text(text = placeholder, style = KinuType.field, color = c.inkMuted, maxLines = 1)
                         }
                         innerTextField()
                     }
@@ -245,12 +257,14 @@ fun KinuTextField(
         )
         if (isError && errorText != null) {
             Spacer(Modifier.height(6.dp))
-            Text(
-                text = errorText,
-                style = KinuType.caption,
-                color = c.danger,
+            Row(
                 modifier = Modifier.padding(start = 6.dp),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(modifier = Modifier.size(6.dp).background(c.danger, CircleShape))
+                Spacer(Modifier.width(6.dp))
+                Text(text = errorText, style = KinuType.caption, color = c.champagne)
+            }
         }
     }
 }
@@ -293,7 +307,7 @@ fun KinuTopBar(
     }
 }
 
-/** 文字だけの案内(一覧が空のときなど)。夜のガラスに載せる。 */
+/** 文字だけの案内(一覧が空のときなど)。サテンに載せる。 */
 @Composable
 fun KinuMessage(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -302,13 +316,13 @@ fun KinuMessage(text: String, modifier: Modifier = Modifier) {
         color = KinuTheme.colors.champagne,
         textAlign = TextAlign.Center,
         modifier = modifier
-            .kinuNightGlass(KinuShapes.card, line = { KinuLight.LINE_NIGHT })
+            .kinuSatin(KinuShapes.card, line = { KinuLight.LINE_NIGHT })
             .padding(horizontal = 24.dp, vertical = 20.dp),
     )
 }
 
 /**
- * 選択肢。選んでいるものは金の縁(rim)と小さな金の帯の印、選んでいないものは夜のガラスだけ。
+ * 選択肢。選んでいるものは金の縁(rim)と小さな金の帯の印、選んでいないものはサテンだけ。
  */
 @Composable
 fun KinuChoice(
@@ -325,7 +339,7 @@ fun KinuChoice(
     Row(
         modifier = modifier
             .heightIn(min = KinuDimens.controlHeight)
-            .kinuNightGlass(
+            .kinuSatin(
                 shape,
                 line = { (if (selected) KinuLight.LINE_FOCUSED else KinuLight.LINE_NIGHT) + KinuLight.LINE_PRESS_BOOST * press.value },
                 touch = { press.touch },
@@ -357,7 +371,7 @@ fun KinuChoice(
 }
 
 /**
- * ダイアログ。夜のガラスの面に、上下に金の縁(リップ)。背景は暗い scrim。scrim を押すと閉じる。
+ * ダイアログ。サテンの面に、上下に金の縁(リップ)。背景は暗い scrim。scrim を押すと閉じる。
  */
 @Composable
 fun KinuDialog(
@@ -385,7 +399,7 @@ fun KinuDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 420.dp)
-                    .kinuNightGlass(KinuShapes.dialog, line = { KinuLight.LINE_NIGHT })
+                    .kinuSatin(KinuShapes.dialog, line = { KinuLight.LINE_NIGHT })
                     // 面の中をタップしても閉じないよう、タップを受け取って消費する
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -424,7 +438,7 @@ fun KinuDialog(
 }
 
 /**
- * 取り消せない操作の確認。[キャンセル] [確定] をどちらも夜のガラスで並べ、確定は危険色の文字にする。
+ * 取り消せない操作の確認。[キャンセル] [確定] をどちらもサテンで並べ、確定は危険(champagne の文字 + 先頭の赤い印)。
  */
 @Composable
 fun KinuConfirmDialog(

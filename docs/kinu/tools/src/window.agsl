@@ -1,5 +1,6 @@
-// Kinu: 琥珀の窓(WINDOW)。名刺の面。SPEC §3・§6。
-// 上 18% に天井の灯り、縦の薄いカーテンのひだ、縦の桟(4分割)、手前のガラスに青海波の点描。
+// Kinu: 琥珀の窓(WINDOW)。v2。名刺の面と、入力欄(glow 0.35 = 落ち着いたクリームのガラス)。SPEC v2-1・v2-3。
+// 上の 9% に天井の灯りの列、縦のブラインド(約 2.5dp 周期・不揃い)、縦の桟(4分割)。
+// glow 0 は薄いクリームのガラス、1 で琥珀に灯る。
 uniform float2 size;
 uniform float dp;
 uniform float hdr;
@@ -35,52 +36,42 @@ half4 main(float2 p) {
     float u = clamp(p.x / size.x, 0.0, 1.0);
     float v = clamp(p.y / size.y, 0.0, 1.0);
     float PI2 = 6.28318;
+    float xd = p.x / dp;                       // x を dp 単位で
 
-    // 上から下へ: 明るい琥珀 → 琥珀 → 奥の暗い琥珀
-    // 全体をクリーム寄りに明るく(#FFDEAA→#ECB272。奥は暗い琥珀)
-    float3 hi = toLin(amberHi) * 1.15;
-    float3 mid = toLin(amber) * 1.15;
-    float3 deep = toLin(amberDeep) * 1.1;
-    float3 col = mix(mid, hi, smoothstep(0.55, 0.0, v));
-    col = mix(col, deep, smoothstep(0.45, 1.0, v));
+    // ---- 琥珀の面: 上 #F1CFAF(クリーム)→ 中 #E7AD84 → 奥 #BA7D50(線形の値はトークンから) ----
+    float3 hi = toLin(amberHi);
+    float3 mid = toLin(amber);
+    float3 deep = toLin(amberDeep);
+    float3 col = mix(hi, mid, smoothstep(0.0, 0.5, v));
+    col = mix(col, deep, smoothstep(0.5, 1.0, v));
 
-    // 天井の灯り: 上 18% に点光源を横に並べる。HDR で白を少し超える
+    // ---- 天井の灯り: 上 9% に点光源を横に並べる。HDR で白を少し超える ----
     float ceilY = 0.09 * size.y;
     float cellX = 22.0 * dp;
     float dx = (fract(p.x / cellX + 0.5) - 0.5) * cellX;
     float dyc = p.y - ceilY;
-    // 点のにじみは半径を大きく(2.6dp)、中心は HDR で白の 2 倍近くまで(通常の画面では白で止まる)
     float lamp = exp(-(dx * dx + dyc * dyc) / (2.6 * dp * 2.6 * dp));
     float ceilBand = exp(-pow(dyc / (4.0 * dp), 2.0)) * 0.35;
-    col += toLin(half4(1.0, 0.95, 0.80, 1.0)) * (lamp * 2.2 + ceilBand) * smoothstep(0.3, 0.0, v);
+    col += toLin(half4(1.0, 0.95, 0.80, 1.0)) * (lamp * 2.2 + ceilBand) * (1.0 - smoothstep(0.0, 0.3, v));
 
-    // 縦の薄いカーテン: 柔らかい縦縞(振幅 11%。見本のひだに合わせて SPEC の 6% より強め)
-    // 布のひだの間隔はまばら。x をゆるく歪ませて周期を不揃いにする(約 74dp と 27dp のうねりを重ねる)
-    float xw = p.x + dp * (4.0 * sin(p.x / dp * 0.085 + seed * 2.0) + 2.0 * sin(p.x / dp * 0.23 + seed * 5.0));
-    float fold = 0.5 + 0.5 * sin(xw / dp * (PI2 / 9.0) + seed * 3.1 + 0.6 * sin(p.y / dp * 0.05));
-    col *= 1.0 - 0.11 * fold;
+    // ---- 縦のブラインド: 約 2.5dp 周期。位相をゆるく揺らして不揃いにする ----
+    float jit = 0.5 * sin(xd * 0.37 + seed * 2.0) + 0.35 * sin(xd * 0.91 + seed * 4.3);
+    float blind = 0.5 + 0.5 * sin(PI2 * xd / 2.5 + 1.6 * jit);
 
-    // 縦の桟: 4分割、幅 1dp、#7A5A40 30%
+    // ---- 縦の桟: 4分割、幅 1dp、#987960 45% ----
     float cell = size.x / 4.0;
     float m = abs(fract(p.x / cell + 0.5) - 0.5) * cell;
     float bar = 1.0 - smoothstep(0.35 * dp, 0.5 * dp + 0.5, m);
     col = mix(col, toLin(mullion), 0.45 * bar);
 
-    // 青海波の点描(不透明度 6%。扇の半径 10dp)
-    float rowH = 10.0 * dp;
-    float row = floor(p.y / rowH);
-    float ox = mod(row, 2.0) * 10.0 * dp;
-    float cx = floor((p.x - ox) / (20.0 * dp) + 0.5) * 20.0 * dp + ox;
-    float cy = (row + 1.0) * rowH;
-    float2 q = float2(p.x - cx, p.y - cy);
-    float r = length(q) / (10.0 * dp);
-    float ring = 1.0 - smoothstep(0.0, 0.08, abs(fract(r * 2.0) - 0.5) - 0.42);
-    float fan = step(q.y, 0.0) * step(r, 1.0) * ring;
-    col = mix(col, col * 0.7, 0.06 * fan);
+    // ---- 灯りの強さ: glow 0 は落ち着いたクリームのガラス、1 は琥珀 ----
+    // 入力欄の glow 0.35 は、クリームがほぼ勝つ(琥珀は薄く混ざる)
+    float3 cream = toLin(half4(0.9569, 0.8863, 0.8000, 1.0));     // #F4E2CC
+    float3 rest = cream * (1.0 - 0.12 * v);
+    float3 lin = mix(rest, col, clamp(glow, 0.0, 1.0));
 
-    // 灯りの強さ(0 → 暗いガラス、1 → 琥珀)
-    float3 dark = toLin(amberDeep) * 0.12;
-    float3 lin = mix(dark, col, smoothstep(0.0, 1.0, glow));
+    // ブラインドの陰(細かい縦縞。振幅 8%)
+    lin *= 1.0 - 0.08 * blind;
 
     float3 shown = toDisplay(toneMap(lin, max(hdr, 1.0)));
     shown += (hash12(p) + hash12(p + float2(17.3, 41.7)) - 1.0) / 255.0;

@@ -114,8 +114,8 @@ object KinuDimens {
     val lipWave = 3.dp
     /** ボタン・入力欄の高さ */
     val controlHeight = 52.dp
-    /** 足元の帯が画面の下から占める割合 */
-    const val FACADE_FRACTION = 0.22f
+    /** 上端・下端の帯の重なりが画面の高さに占める割合(シェーダーの定数と揃える) */
+    const val FACADE_FRACTION = 0.16f
 }
 
 /** 光の強さ(シェーダーの uniform `line` に渡す値)。 */

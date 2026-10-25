@@ -232,20 +232,19 @@ fun Modifier.kinuWindow(
 }
 
 /**
- * 夜のガラス(副ボタン・アイコンボタン・入力欄・ダイアログの面)。形で clip し、1dp の金の縁(rim)を描く。
- * @param line 上の縁の光の線 0..1.6(通常 [KinuLight.LINE_NIGHT])
- * @param ember 奥の琥珀のにじみ 0..1(入力中の欄)
+ * サテンの金属(副ボタン・アイコンボタン・選択肢・ダイアログの面。旧「夜のガラス」)。形で clip し、縁(rim)を描く。
+ * 面はトープ〜灰紫のサテン。上の縁に細い光の線。
+ * @param line 上の縁の光の線 0..1.6(通常 [KinuLight.LINE_NIGHT] 0.35。押すと強まる)
  */
 @Composable
-fun Modifier.kinuNightGlass(
+fun Modifier.kinuSatin(
     shape: Shape,
     line: () -> Float = { KinuLight.LINE_NIGHT },
-    ember: () -> Float = { 0f },
     touch: () -> Offset = { KinuTouchNone },
 ): Modifier {
     val c = KinuTheme.colors
     val hdr = LocalGlowHeadroom.current
-    val shader = remember { RuntimeShader(KinuShaders.NIGHT_GLASS) }
+    val shader = remember { RuntimeShader(KinuShaders.SATIN) }
     return this.clip(shape).drawWithCache {
         val brush = ShaderBrush(shader)
         // 縁は 2dp で描き、外側の半分を clip で切る(内側に 1dp 残る)
@@ -256,12 +255,10 @@ fun Modifier.kinuNightGlass(
         shader.setFloatUniform("hdr", hdr)
         shader.setColorUniform("glassTop", c.glassTop.toArgb())
         shader.setColorUniform("glassBottom", c.glassBottom.toArgb())
-        shader.setColorUniform("fin", c.fin.toArgb())
+        shader.setColorUniform("rim", c.rim.toArgb())
         shader.setColorUniform("lineCore", c.lineCore.toArgb())
-        shader.setColorUniform("amber", c.amber.toArgb())
         onDrawBehind {
             shader.setFloatUniform("line", line())
-            shader.setFloatUniform("ember", ember())
             val t = touch()
             shader.setFloatUniform("touch", t.x, t.y)
             drawRect(brush)
