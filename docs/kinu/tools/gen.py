@@ -1,6 +1,6 @@
 """Kinu の AGSL を Kotlin の定数に書き出す。
 
-入力: docs/kinu/tools/src/{background,ribbon,window,nightglass}.agsl
+入力: docs/kinu/tools/src/{background,ribbon,window,satin}.agsl
 出力: app/src/main/java/com/example/businesscard/ui/kinu/KinuShaders.kt
 
 使い方(リポジトリのルートで): python3 docs/kinu/tools/gen.py
@@ -18,7 +18,7 @@ SHADERS = [
     ('BACKGROUND', 'background.agsl'),
     ('RIBBON', 'ribbon.agsl'),
     ('WINDOW', 'window.agsl'),
-    ('NIGHT_GLASS', 'nightglass.agsl'),
+    ('SATIN', 'satin.agsl'),
 ]
 PLACEHOLDER = 'half4 main(float2 p){return half4(0);}\n'
 # 定数 1 つの上限。JVM の定数プールは 1 文字列 64KB まで
