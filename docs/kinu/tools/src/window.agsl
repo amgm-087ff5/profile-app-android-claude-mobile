@@ -52,7 +52,7 @@ half4 main(float2 p) {
     float dyc = p.y - ceilY;
     float lamp = exp(-(dx * dx + dyc * dyc) / (2.6 * dp * 2.6 * dp));
     float ceilBand = exp(-pow(dyc / (4.0 * dp), 2.0)) * 0.35;
-    col += toLin(half4(1.0, 0.95, 0.80, 1.0)) * (lamp * 2.2 + ceilBand) * (1.0 - smoothstep(0.0, 0.3, v));
+    col += toLin(half4(1.0, 0.95, 0.80, 1.0)) * (lamp * 1.9 + ceilBand * 0.8) * (1.0 - smoothstep(0.0, 0.3, v));
 
     // ---- 縦のブラインド: 約 2.5dp 周期。位相をゆるく揺らして不揃いにする ----
     float jit = 0.5 * sin(xd * 0.37 + seed * 2.0) + 0.35 * sin(xd * 0.91 + seed * 4.3);

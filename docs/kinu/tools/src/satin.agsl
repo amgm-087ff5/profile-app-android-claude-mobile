@@ -45,7 +45,7 @@ half4 main(float2 p) {
 
     // 縦の細かいヘアライン: 列ごとにわずかに明暗(振幅 ±2.5%)
     float hl = hash12(float2(floor(p.x), 7.0));
-    col *= 1.0 + 0.05 * (hl - 0.5);
+    col *= 1.0 + 0.09 * (hl - 0.5);
 
     // ---- 上の縁の光の線: 芯 1dp 前後、下へのにじみ 3dp。touch で指の x へ寄る ----
     bool touchOn = touch.x >= 0.0;

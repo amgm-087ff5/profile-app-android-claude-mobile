@@ -73,7 +73,7 @@ half4 main(float2 p) {
 
     // 上の巻き込みの直下の細い陰(d が 0〜4dp だけ。陰は細い帯)
     float under = step(0.0, d);
-    float shadeBand = under * exp(-d / 1.3) * 0.85;
+    float shadeBand = under * exp(-d / 1.1) * 0.95;
     float3 base = mix(face, shade, shadeBand);
 
     // ---- つや: 横に伸びる鋭い1本。幅は高さの 8%(全幅)。うねりは 1 周期。指の x へ寄る ----
@@ -81,10 +81,10 @@ half4 main(float2 p) {
     float tg = touchOn ? exp(-pow((p.x - touch.x) / (size.x * 0.22), 2.0)) : 0.0;
     float vh = 0.46 + 0.09 * sin(PI2 * 1.0 * u + seed) + 0.03 * sin(PI2 * 2.0 * u + seed * 2.1);
     float gdy = (v - vh) * size.y;                     // px
-    float halfW = 0.04 * size.y;                       // 全幅 8%
-    float streak = exp(-pow(abs(gdy) / halfW, 4.0));   // 縁が鋭く立つ
+    float halfW = 0.045 * size.y;                      // 全幅 8%(わずかに広めに取り、縁は鋭く)
+    float streak = exp(-pow(abs(gdy) / halfW, 6.0));   // 縁が鋭く立つ(平らな頂 + 急な裾)
     float taper = smoothstep(0.0, 0.06, u) * smoothstep(1.0, 0.94, u);
-    base += gloss * streak * taper * (0.5 + 0.9 * tg) * 0.6;
+    base += gloss * streak * taper * (0.7 + 1.0 * tg) * 0.75;
 
     // ---- 光の線: 芯 1.2dp(半幅 0.6)・上へのにじみ 3dp・下の面を舐める 30% の高さまで ----
     float core = exp(-pow(d / 0.6, 2.0));

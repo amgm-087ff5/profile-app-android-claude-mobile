@@ -1,43 +1,40 @@
-// Kinu の背景(画面全体)。SPEC.md §3・§6 BACKGROUND。
-// 上=もやの空、黒い塔(銀の縦の波線)、下=金の帯 2〜3 本と、その間の琥珀の窓。各帯の上の縁に細い光の線。
-// 計算は線形の光で行い、toneMapC で丸めてから sRGB に戻し、最後にディザを入れる(Porcelain と同じ並び)。
-// uniform の色は sRGB のまま渡し、ここで toLinearSrgb する(Porcelain と同じ扱い)。
-// 出力の y は画面の左上が原点。dp は 1dp の px。
+// Kinu の背景(画面全体)。SPEC.md v2-2・v2-3 BACKGROUND。見本は外装の布のドレープだけ(ref_facade.png)。
+// 上端と下端に、厚みのある布の帯が 4 段重なる(各 画面高の 16%)。
+// 各帯の上の縁は巻き込んで光の線を受け、下の縁は foldGold で折り返す。帯の間は窓(クリーム〜琥珀)のすき間。
+// 中央は広いトープ〜灰紫のサテンの陰の面(縦にごく淡いヘアライン、横にゆるいうねり)。
+// 帯の光の線は近くの面を暖かく照らす(40dp で減衰)。
+// 計算は線形の光で行い、toneMapC で丸めてから sRGB に戻し、最後にディザを入れる。
+// uniform の色は sRGB のまま渡し、ここで toLinearSrgb する。出力の y は画面の左上が原点。dp は 1dp の px。
 
 uniform float2 size;
 uniform float dp;
-uniform float facadeTop;
 uniform float ignite;
 uniform float hdr;
-layout(color) uniform half4 tower;
-layout(color) uniform half4 fin;
+layout(color) uniform half4 facadeShade;
+layout(color) uniform half4 facadeMauve;
+layout(color) uniform half4 foldGold;
 layout(color) uniform half4 goldLit;
-layout(color) uniform half4 goldShade;
 layout(color) uniform half4 amber;
+layout(color) uniform half4 amberHi;
 layout(color) uniform half4 lineCore;
 
 const float PI = 3.14159265;
 
-// ---- 塔の銀の縦の波線(dp) ----
-const float FIN_STEP = 11.0;
-const float FIN_HALF = 0.3;      // 線の幅 0.6dp の半分
-const float FIN_WAVE_AMP = 2.5;
-const float FIN_WAVE_LEN = 140.0;
-// 線の明るさ(見本は黒地に低コントラストの灰銀。白く強すぎると糸に見える)
-const float FIN_COVER = 0.36;
-
-// ---- 帯と窓(dp) ----
-const float BAND_H = 26.0;
-const float WIN_H = 30.0;
-const float BAND_PITCH = 56.0;   // BAND_H + WIN_H
-const float BAND_COUNT = 3.0;
-const float LOWER_GLASS = 138.0; // 最後の帯の下端(ここより下は窓だけ)
-const float LIGHT_PITCH = 9.0;   // 天井の灯りの間隔(おおよそ。位置と明るさは揺らす)
+// ---- 帯の領域(画面の上端・下端から各 16%) ----
+const float ZONE = 0.16;
+const float LAYERS = 4.0;        // 帯の段数(ループは 4 回)
+const float BAND_FRAC = 0.55;    // 帯の高さ / 段の間隔(残りが窓のすき間)
+const float FADE_IN = 10.0;      // 下の領域の上側のなじみ(dp)
+const float FADE_OUT = 14.0;     // 上の領域の下側のなじみ(dp)
 
 // ---- 光の線 ----
 const float LINE_CORE_K = 4.5;   // 芯の強さ(線形。hdr=1 では lineCore で止まる)
 const float LINE_GLARE_K = 0.45; // 上へのにじみ
 const float LINE_GLARE_UP = 3.0; // にじみの高さ(dp)
+
+// ---- 中央の面 ----
+const float LIGHT_REACH = 40.0;  // 帯の光が面を照らす距離(dp)
+const float WARM_K = 0.12;       // 面が受ける暖かい照り返しの強さ
 
 float3 toLin(half4 c) {
     return float3(toLinearSrgb(c.rgb));
@@ -54,11 +51,6 @@ float hash12(float2 p) {
     return fract((p3.x + p3.y) * p3.z);
 }
 
-// 整数の番号から 0..1 の揺らぎ(線ごと・灯りごとの位置と明るさ)
-float hash1(float n) {
-    return fract(sin(n * 127.1 + 311.7) * 43758.5453);
-}
-
 // 線形の光を、各チャンネルの天井 C へ向けてなめらかに丸める。
 // 0.8C までは変えない。大きな値は C へ漸近するので、光の芯は lineCore の色(hdr=1)か白の hdr 倍で止まる
 float3 toneMapC(float3 x, float3 C) {
@@ -67,128 +59,115 @@ float3 toneMapC(float3 x, float3 C) {
     return min(x, k) + (C - k) * over / ((C - k) + over);
 }
 
-// 塔の銀の線の被覆率 0..1。線は x 方向に 11dp おき、位相と明るさ(0.6..1.0)は線ごとにずらす。
-// 近い線(前後1本)だけを見れば足りる(うねりは ±2.5dp で、間隔 11dp より小さい)
-float finCover(float xd, float yd) {
-    float aa = 0.5 / dp;
-    float fi0 = floor(xd / FIN_STEP + 0.5);
-    float cov = 0.0;
-    for (int k = -1; k <= 1; k++) {
-        float i = fi0 + float(k);
-        float xc = i * FIN_STEP + FIN_WAVE_AMP * sin(2.0 * PI * yd / FIN_WAVE_LEN + i * 2.399);
-        float d = abs(xd - xc);
-        float bright = 0.6 + 0.4 * hash1(i);
-        cov = max(cov, bright * (1.0 - smoothstep(FIN_HALF - aa, FIN_HALF + aa, d)));
-    }
-    return cov;
+// 段 k の上縁の位置(dp、帯の領域の上端からの距離)。緩く大きな波(画面幅で約 1 周期)を重ねる。
+// 段の間隔より振幅が大きいので、帯は時々重なる(奥の段が手前の段の上に乗る)。
+float edgeAt(float k, float xd, float pitch) {
+    return k * pitch
+        + 5.5 * sin(2.0 * PI * xd / 360.0 + 1.1 * k + 0.4)
+        + 1.6 * sin(2.0 * PI * xd / 200.0 + 0.7 * k);
 }
 
-// 金の帯の面。s は帯の上の縁からの深さ(dp、下が正)。
-// 上の光の線で照らされ、陰の面へ落ちる。下 30% は下の琥珀の照り返しを受ける。つやは横に伸びる波。
-float3 bandFace(float3 gl, float3 gs, float3 am, float s, float xd, float kf) {
-    float lit = exp(-s / 6.0);
-    float3 face = mix(gs * 0.8, gl, 0.05 + 0.85 * lit);
-    face *= 0.92 + 0.08 * sin(PI * s / BAND_H);
-    face += am * 0.22 * smoothstep(16.0, 26.0, s);
-    float sh = pow(0.5 + 0.5 * sin(xd * 2.0 * PI / 300.0 + kf * 2.1), 6.0)
-        * exp(-pow((s - 5.0) / 4.0, 2.0)) * 0.2;
-    face += gl * sh;
-    face = mix(face, gs * 0.5, smoothstep(23.0, 26.0, s));
+// 布の帯の面。s は上縁からの深さ(dp、0 以上)。上の縁は光の線に舐められて金、下へ向かって
+// 陰の面(トープ〜灰紫)へ落ちる。下の縁は foldGold の折り返し。つやは横に伸びる緩い波。
+float3 bandFace(float3 sh, float3 gl, float3 am, float3 fold, float s, float bh, float xd, float kf) {
+    float lit = exp(-s / 7.0);
+    float3 litCol = mix(am * 0.9, gl, 0.45);
+    float3 face = mix(sh, litCol, 0.12 + 0.88 * lit);
+    // つや: 上縁の少し下に、横へ伸びる弱いハイライト(段ごとに位相をずらす)
+    float glint = pow(0.5 + 0.5 * sin(2.0 * PI * xd / 240.0 + kf * 2.1), 8.0)
+        * exp(-((s - 6.0) * (s - 6.0)) / 12.0);
+    face += gl * 0.16 * glint;
+    // 下の縁の折り返し(下向きの面が照らされた金)
+    float fm = smoothstep(bh - 8.0, bh - 1.0, s);
+    face = mix(face, fold, 0.85 * fm);
     return face;
 }
 
-// 琥珀の窓。wv は窓の中の位置(0 = 上、1 = 下)。上に灯りの列、縦のカーテンのひだ、縦の桟。
-// 灯りは間隔を大きくずらさず(おおよそ 9dp)、位置(横・縦)と明るさを灯りごとに揺らす。
-float3 windowCol(float3 am, float3 lc, float wv, float xd, float vF, float dp2) {
-    float3 w = mix(am * 1.1, am * 0.85, smoothstep(0.0, 0.5, wv));
-    w = mix(w, am * 0.3, smoothstep(0.4, 1.0, wv));
-    // 天井の灯り(芯は HDR で白を少し超える)
-    float n = floor(xd / LIGHT_PITCH);
-    float lights = 0.0;
-    for (int k = -1; k <= 1; k++) {
-        float idx = n + float(k);
-        float cx = (idx + 0.5) * LIGHT_PITCH + 2.2 * (hash1(idx + 40.0) - 0.5) * 2.0;
-        float cy = 2.7 + 1.2 * (hash1(idx + 80.0) - 0.5) * 2.0;
-        float b = 0.55 + 0.45 * hash1(idx + 120.0);
-        float dx = xd - cx;
-        float dy = wv * WIN_H - cy;
-        lights += b * exp(-(dx * dx + dy * dy) / 0.8);
-    }
-    w += lc * 1.2 * lights;
-    // 縦の薄いカーテン(振幅 6%)
-    w *= 1.0 + 0.06 * sin(xd * 2.0 * PI / 3.3 + floor(vF / BAND_PITCH) * 0.7);
-    // 縦の桟(4分割、1dp 幅、30%)
-    float mw = dp2 / 4.0;
+// 帯の間の窓。wv は窓の中の位置(0 = 上の帯の下端、1 = 次の帯の上縁)。
+// 上がクリーム、中ほどが琥珀、下が深い琥珀。縦のブラインドを不揃いに、縦の桟を 4 分割。
+float3 windowCol(float3 hi, float3 am, float3 deep, float wv, float xd, float wdp) {
+    float3 w = mix(hi, am, smoothstep(0.0, 0.45, wv));
+    w = mix(w, deep, smoothstep(0.5, 1.0, wv));
+    float blind = 0.5 + 0.5 * sin(2.0 * PI * xd / 2.4 + 3.0 * sin(xd * 0.37));
+    w *= 0.97 + 0.03 * blind;
+    float mw = wdp / 4.0;
     float mx = mod(xd, mw);
     float md = min(mx, mw - mx);
-    float mc = 1.0 - smoothstep(0.5 - 0.5 / dp, 0.5 + 0.5 / dp, md);
-    w = mix(w, w * 0.45, 0.3 * mc);
+    float mc = 1.0 - smoothstep(0.25, 0.55, md);
+    w = mix(w, w * 0.6, 0.25 * mc);
     return w;
 }
 
 half4 main(float2 p) {
     float aa = 0.5 / dp;
     float xd = p.x / dp;
-    float yd = p.y / dp;
-    float vF = (p.y - facadeTop) / dp;           // 足元の帯の上端からの深さ(dp)。負なら塔
-    float H = (size.y - facadeTop) / dp;         // 足元の高さ(dp)
-    float dpW = size.x / dp;                     // 画面の幅(dp)
     float xn = p.x / size.x;
+    float H = size.y;
+    float zpx = ZONE * H;            // 帯の領域の高さ(px)
+    float Zdp = zpx / dp;            // 同じ(dp)
+    float pitch = Zdp / LAYERS;      // 段の間隔(dp)
+    float bh = pitch * BAND_FRAC;    // 帯の高さ(dp)
+    float wdp = size.x / dp;
 
-    float3 tw = toLin(tower);
-    float3 fi = toLin(fin);
+    // 陰の面の基調(平均 #75625A 前後): トープ寄りに混ぜ、青を少し抑える
+    float3 sh = mix(toLin(facadeShade), toLin(facadeMauve), 0.6) * float3(1.0, 0.99, 0.84);
     float3 gl = toLin(goldLit);
-    float3 gs = toLin(goldShade);
     float3 am = toLin(amber);
+    float3 hi = toLin(amberHi);
+    float3 deep = am * 0.6;
+    float3 fold = toLin(foldGold);
     float3 lc = toLin(lineCore);
 
     // 光の線の登場: 左から右へ灯る
     float gate = clamp((ignite * 1.2 - xn) / 0.2, 0.0, 1.0);
 
-    // ---- 光の線(帯ごとに1本。上縁に細い芯と、上へのにじみ) ----
+    // ---- 中央の陰の面(サテン): 横にゆるいうねり、縦のごく淡いヘアライン ----
+    float yd = p.y / dp;
+    float wave = 1.0 + 0.06 * sin(2.0 * PI * xd / 380.0 + 0.8 + 0.5 * sin(2.0 * PI * yd / 210.0));
+    float hx = mod(xd + 0.5 * sin(yd * 0.05), 5.0) - 2.5;
+    float hair = 0.035 * exp(-(hx * hx) / 0.12) - 0.012;
+    float3 satin = sh * (wave + hair);
+
+    // 帯の光が近くの面を暖める(上と下の領域の縁から 40dp で減衰)
+    float dTop = max(yd - Zdp, 0.0);
+    float dBot = max(((H - zpx) - p.y) / dp, 0.0);
+    float warmAmt = exp(-dTop / LIGHT_REACH) + exp(-dBot / LIGHT_REACH);
+    satin += am * WARM_K * warmAmt * (0.85 + 0.15 * sin(2.0 * PI * xd / 300.0));
+
+    // ---- 帯の領域(上端と下端のどちらか) ----
+    bool bottom = p.y > H * 0.5;
+    float ly = bottom ? (p.y - (H - zpx)) / dp : yd;
+    float ff = bottom ? smoothstep(-FADE_IN, -2.0, ly) : 1.0 - smoothstep(Zdp - FADE_OUT, Zdp, ly);
+
+    float3 zc = satin;
     float3 lineAcc = float3(0.0);
-    float3 haze = mix(tw, fi, 0.4) + am * 0.02;
-    float warm = exp(min(vF, 0.0) / 60.0);       // 足元の帯の光が塔の下を暖める(上へ 60dp で減衰)
-
-    // ---- 塔(上〜中) ----
-    float fc = finCover(xd, yd);
-    float3 finCol = mix(fi, am * 0.6, 0.4 * warm);
-    float3 towerCol = mix(mix(haze, tw, smoothstep(0.0, 90.0, yd)), finCol, fc * FIN_COVER);
-    towerCol += am * 0.10 * warm;
-
-    // ---- 足元: 窓(地)。帯はこの上に、塔の側へもはみ出して描く ----
-    float wv;
-    if (vF >= LOWER_GLASS) {
-        wv = clamp((vF - LOWER_GLASS) / max(H - LOWER_GLASS, 1.0), 0.0, 1.0);
-    } else {
-        wv = clamp((mod(vF, BAND_PITCH) - BAND_H) / WIN_H, 0.0, 1.0);
-    }
-    float3 facadeCol = windowCol(am, lc, wv, xd, vF, dpW);
-    // 窓の地は足元より上(vF < 0)では使わない。塔の色を基調にする
-    float3 col = vF < 0.0 ? towerCol : facadeCol;
-
-    for (int k = 0; k < 3; k++) {
+    // 段ごとに、帯(上縁〜下縁)、その下の窓(次の帯の上縁まで)の順に塗る。後の段が前の段の上に乗る
+    for (int k = 0; k < 4; k++) {
         float kf = float(k);
-        // 帯の上縁は緩く波打つ(2本の正弦を重ねる)。波の上がり側は塔の上まで届く
-        float e = kf * BAND_PITCH
-            + 4.5 * sin(2.0 * PI * xd / 260.0 + kf * 1.7)
-            + 2.4 * sin(2.0 * PI * xd / 120.0 + kf * 0.9 + 0.5);
-        float s = vF - e;
-        // 帯の面(vF で切らない。上縁が facadeTop より上へ出る所も帯として描く)
-        if (kf < BAND_COUNT) {
-            float cov = smoothstep(-aa, aa, s) * (1.0 - smoothstep(BAND_H - aa, BAND_H + aa, s));
-            if (cov > 0.0) {
-                col = mix(col, bandFace(gl, gs, am, max(s, 0.0), xd, kf), cov);
-            }
-        }
-        // 上縁の光の線: 芯(幅 1.2dp)と、上へのにじみ(3dp)
-        float core = exp(-(s * s) / 0.3);
-        float upper = s < 0.0 ? exp(s / LINE_GLARE_UP) : 0.0;
-        lineAcc += lc * (LINE_CORE_K * core + LINE_GLARE_K * upper);
-    }
-    lineAcc *= gate;
+        float e0 = edgeAt(kf, xd, pitch);
+        float e1 = edgeAt(kf + 1.0, xd, pitch);
 
-    col += lineAcc;
+        // 帯 k
+        float s = ly - e0;
+        float cov = smoothstep(-aa, aa, s) * (1.0 - smoothstep(bh - aa, bh + aa, s));
+        zc = mix(zc, bandFace(sh, gl, am, fold, max(s, 0.0), bh, xd, kf), cov);
+
+        // 光の線: 芯(幅 1.2dp 前後)と、上へのにじみ、下へのわずかな広がり
+        float core = exp(-(s * s) / 0.45);
+        float up = s < 0.0 ? exp(s / LINE_GLARE_UP) : 0.0;
+        float down = s > 0.0 ? exp(-s / 2.0) : 0.0;
+        lineAcc += lc * (LINE_CORE_K * core + LINE_GLARE_K * up + 0.12 * down);
+
+        // 窓: 帯 k の下端から次の帯の上縁まで(最後の段は領域の終わりまで)
+        float wStart = e0 + bh;
+        float ws = ly - wStart;
+        float wcov = smoothstep(-aa, aa, ws);
+        float wv = clamp(ws / max(e1 - wStart, 1.0), 0.0, 1.0);
+        zc = mix(zc, windowCol(hi, am, deep, wv, xd, wdp), wcov);
+    }
+
+    float3 col = mix(satin, zc, ff);
+    col += lineAcc * gate;
 
     // 通常は lineCore で止まり、HDR では白の hdr 倍まで出す
     float3 C = lc * max(hdr, 1.0);

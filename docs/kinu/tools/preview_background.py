@@ -2,7 +2,10 @@
 
 - アプリと同じ AGSL を skia.RuntimeEffect でコンパイルし、同じ uniform の並びで描く。
 - 色の uniform は KinuTokens.kt の sRGB の値をそのまま渡す(シェーダー側で toLinearSrgb する)。
-- 出力: out/background.png(hdr=1、8bit sRGB)。HDR 確認は F16 で hdr=3 を描き、光の線の芯の値を表示する。
+- 出力(out/):
+  - background.png: 1080x2400、8bit sRGB、hdr=1
+  - background_vs_photo.png: 見本(ref_facade.png)と並べたもの(帯の色・光の線・ドレープの厚みの比較)
+- HDR 確認は F16 で hdr=3 を描き、光の線の芯の最大値を表示する。
 """
 import os
 import re
@@ -15,12 +18,15 @@ import skia
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHADER = os.path.join(HERE, 'src', 'background.agsl')
 TOKENS = os.path.join(HERE, '..', '..', '..', 'app', 'src', 'main', 'java', 'com', 'example', 'businesscard', 'ui', 'kinu', 'KinuTokens.kt')
+REF = os.path.join(HERE, '..', 'ref_facade.png')
 OUT = os.path.join(HERE, 'out')
 CS = skia.ColorSpace.MakeSRGB()
 
 W, H = 1080, 2400
 DP = 2.625
-FACADE_FRACTION = 0.22
+ZONE_FRACTION = 0.16  # 上端・下端それぞれの帯の領域(シェーダーの ZONE と同じ)
+
+COLOR_NAMES = ['facadeShade', 'facadeMauve', 'foldGold', 'goldLit', 'amber', 'amberHi', 'lineCore']
 
 
 def token_colors():
@@ -30,9 +36,7 @@ def token_colors():
     vals = {}
     for m in re.finditer(r'(\w+) = Color\(0x([0-9A-Fa-f]{8})\)', body):
         vals[m.group(1)] = int(m.group(2), 16)
-    need = {'tower': 'tower', 'fin': 'fin', 'goldLit': 'goldLit', 'goldShade': 'goldShade',
-            'amber': 'amber', 'lineCore': 'lineCore'}
-    return {k: vals[v] for k, v in need.items()}
+    return {k: vals[k] for k in COLOR_NAMES}
 
 
 def srgb4(argb):
@@ -63,15 +67,13 @@ def pack(src, values):
 
 
 def render(eff, src, w, h, hdr, f16, ignite=1.0):
-    colors = token_colors()
     values = {
         'size': [w, h],
         'dp': DP,
-        'facadeTop': h * (1.0 - FACADE_FRACTION),
         'ignite': ignite,
         'hdr': hdr,
     }
-    for k, argb in colors.items():
+    for k, argb in token_colors().items():
         values[k] = srgb4(argb)
     shader = eff.makeShader(skia.Data.MakeWithCopy(pack(src, values)))
     ct = skia.kRGBA_F16_ColorType if f16 else skia.kRGBA_8888_ColorType
@@ -82,7 +84,7 @@ def render(eff, src, w, h, hdr, f16, ignite=1.0):
     return surf
 
 
-def to_array(surf, w, h, f16):
+def to_array(surf, w, h):
     """表面の画素を float の配列(H, W, 4)で得る。F16 は sRGB の拡張値(1 を超えうる)。"""
     info = skia.ImageInfo.Make(w, h, skia.kRGBA_F32_ColorType, skia.kUnpremul_AlphaType, CS)
     buf = np.zeros((h, w, 4), dtype=np.float32)
@@ -93,9 +95,35 @@ def to_array(surf, w, h, f16):
 
 
 def save_png(arr, path):
-    img8 = np.clip(np.rint(arr[..., :3] * 255.0), 0, 255).astype(np.uint8)
     from PIL import Image
+    img8 = np.clip(np.rint(arr[..., :3] * 255.0), 0, 255).astype(np.uint8)
     Image.fromarray(img8, 'RGB').save(path)
+
+
+def hexof(p):
+    r, g, b = (np.clip(p, 0, 1) * 255).round().astype(int)
+    return '#%02X%02X%02X' % (r, g, b)
+
+
+def make_comparison(arr8, path):
+    """見本(左)と、背景の全体(中)・上下の帯の領域の拡大(右)を並べる。"""
+    from PIL import Image
+    ref = Image.open(REF).convert('RGB')
+    bg = Image.fromarray(np.clip(np.rint(arr8[..., :3] * 255.0), 0, 255).astype(np.uint8), 'RGB')
+    zh = int(H * ZONE_FRACTION)
+    top = bg.crop((0, 0, W, zh)).resize((560, int(zh * 560 / W)), Image.LANCZOS)
+    bot = bg.crop((0, H - zh, W, H)).resize((560, int(zh * 560 / W)), Image.LANCZOS)
+    full = bg.resize((int(W * 556 / H), 556), Image.LANCZOS)
+    gap = 16
+    cw = ref.width + gap + full.width + gap + 560
+    ch = max(ref.height, top.height + gap + bot.height)
+    canvas = Image.new('RGB', (cw, ch), (40, 36, 34))
+    canvas.paste(ref, (0, 0))
+    canvas.paste(full, (ref.width + gap, 0))
+    x = ref.width + gap + full.width + gap
+    canvas.paste(top, (x, 0))
+    canvas.paste(bot, (x, top.height + gap))
+    canvas.save(path)
 
 
 def main():
@@ -104,35 +132,38 @@ def main():
     print('compiled: background.agsl OK')
 
     # 1) 8bit sRGB で hdr=1
-    surf8 = render(eff, src, W, H, 1.0, f16=False)
-    arr8 = to_array(surf8, W, H, f16=False)
+    arr8 = to_array(render(eff, src, W, H, 1.0, f16=False), W, H)
     save_png(arr8, os.path.join(OUT, 'background.png'))
     print('saved', os.path.join(OUT, 'background.png'))
+    make_comparison(arr8, os.path.join(OUT, 'background_vs_photo.png'))
+    print('saved', os.path.join(OUT, 'background_vs_photo.png'))
 
-    # 2) F16 で hdr=3 の光の線の芯の値を調べる
-    surf16 = render(eff, src, W, H, 3.0, f16=True)
-    arr16 = to_array(surf16, W, H, f16=True)
-    facade = int(H * (1.0 - FACADE_FRACTION))
-    # 光の線は帯の上縁(facadeTop 付近)にある。その帯を縦に走査して最大値を取る
-    band = slice(facade - 20, facade + 30)
-    peak = arr16[band, :, :3].reshape(-1, 3).max(axis=0)
-    print('HDR hdr=3 line core peak (sRGB ext) R G B =', np.round(peak, 3))
+    # 2) F16 で hdr=3 と hdr=1 の光の線の芯の値(帯の領域の全体の最大値)
+    zh = int(H * ZONE_FRACTION)
+    arr16 = to_array(render(eff, src, W, H, 3.0, f16=True), W, H)
+    zone = np.concatenate([arr16[:zh, :, :3], arr16[H - zh:, :, :3]]).reshape(-1, 3)
+    peak = zone.max(axis=0)
+    print('HDR hdr=3 zone peak (sRGB ext) R G B =', np.round(peak, 3))
     print('  > 1.0 in any channel:', bool((peak > 1.0).any()))
-    arr_lo = to_array(render(eff, src, W, H, 1.0, f16=True), W, H, f16=True)
-    peak1 = arr_lo[band, :, :3].reshape(-1, 3).max(axis=0)
-    print('hdr=1 line core peak R G B =', np.round(peak1, 3), '(#FFF6E0 = 1.000 0.965 0.878)')
+    arr1 = to_array(render(eff, src, W, H, 1.0, f16=True), W, H)
+    zone1 = np.concatenate([arr1[:zh, :, :3], arr1[H - zh:, :, :3]]).reshape(-1, 3)
+    print('hdr=1 zone peak R G B =', np.round(zone1.max(axis=0), 3), '(lineCore #FFF4E6 = 1.000 0.957 0.902)')
 
-    # 3) 見本の値との対応(帯・窓・塔の代表点、8bit 結果)
-    def hexof(p):
-        r, g, b = (np.clip(p, 0, 1) * 255).round().astype(int)
-        return '#%02X%02X%02X' % (r, g, b)
+    # 3) 代表点(8bit、hdr=1)
     samples = {
-        'tower mid (x=540,y=600)': (540, 600),
-        'tower lower (x=300,y=1700)': (300, 1700),
-        'band top lit (x=540, facade+2)': (540, facade + 2),
-        'window amber (x=540, facade+42)': (540, facade + 42),
+        'centre satin mean (rows zh..H-zh)': None,
+        'top band lip (x=540, y=12)': (540, 12),
+        'top band face (x=300, y=40)': (300, 40),
+        'top window (x=200, y=28)': (200, 28),
+        'bottom band face (x=540, y=H-40)': (540, H - 40),
+        'bottom fold (x=540, y=H-18)': (540, H - 18),
     }
-    for name, (sx, sy) in samples.items():
+    centre = arr8[zh + 20:H - zh - 20, :, :3].reshape(-1, 3).mean(axis=0)
+    print('centre satin mean:', hexof(centre))
+    for name, pt in samples.items():
+        if pt is None:
+            continue
+        sx, sy = pt
         print(f'{name}: {hexof(arr8[sy, sx, :3])}')
 
 
