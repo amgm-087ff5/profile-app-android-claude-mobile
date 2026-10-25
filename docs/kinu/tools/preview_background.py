@@ -24,7 +24,7 @@ CS = skia.ColorSpace.MakeSRGB()
 
 W, H = 1080, 2400
 DP = 2.625
-ZONE_FRACTION = 0.16  # 上端・下端それぞれの帯の領域(シェーダーの ZONE と同じ)
+ZONE_FRACTION = 0.20  # 上端・下端それぞれの帯の領域(シェーダーの ZONE と同じ)
 
 COLOR_NAMES = ['facadeShade', 'facadeMauve', 'foldGold', 'goldLit', 'amber', 'amberHi', 'lineCore']
 
