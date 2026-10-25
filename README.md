@@ -59,7 +59,7 @@ com.example.businesscard
 | 見た目 | 中身 | 描き方 |
 |---|---|---|
 | Edgelit(すりガラス) | `ui/glass/` `ui/component/` `ui/theme/` | 上記 |
-| Kinu(絹、仮称) | `ui/kinu/` | 夜の黒い塔の足元に、絹のドレープのように波打つ淡い金の帯が重なる。帯の上の縁の光の線(HDR で白を超える)が面を舐め、帯の間の窓は琥珀に灯る。背景・帯・ガラスは AGSL(`KinuShaders.kt`。`docs/kinu/tools/gen.py` が `docs/kinu/tools/src/*.agsl` から書き出す) |
+| Kinu(絹、仮称) | 夜の銀座の外装を見本に、波打つシャンパンゴールドの帯・縁の光の線(HDR)・クリームの窓 | ui/kinu |
 | Porcelain(陶器、仮称) | `ui/porcelain/` | 明るいグレーの板に、柔らかい影の丸いボタン。板の中ほどを波打つ板が横切り、その縁の裏に隠れた帯状の光源が奥の面を照らす。光の量(帯に沿った照度の積分・透過)を AGSL で計算し、HDR 対応の画面では光の芯を白より明るく光らせる(`PorcelainShaders.kt`)。影は BlurMaskFilter |
 
 画面(一覧・表示・編集)は `ui/designsystem/` の共通部品(`AppButton` など)だけを使い、部品が見た目ごとの実装に振り分ける。
