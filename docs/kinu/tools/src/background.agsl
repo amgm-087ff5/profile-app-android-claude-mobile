@@ -70,7 +70,7 @@ float edgeAt(float k, float xd, float pitch) {
 // 布の帯の面。s は上縁からの深さ(dp、0 以上)。上の縁は光の線に舐められて金、下へ向かって
 // 陰の面(トープ〜灰紫)へ落ちる。下の縁は foldGold の折り返し。つやは横に伸びる緩い波。
 float3 bandFace(float3 sh, float3 gl, float3 am, float3 fold, float s, float bh, float xd, float kf) {
-    float lit = exp(-s / 7.0);
+    float lit = exp(-s / 4.5);
     float3 litCol = mix(am * 0.9, gl, 0.45);
     float3 face = mix(sh, litCol, 0.12 + 0.88 * lit);
     // つや: 上縁の少し下に、横へ伸びる弱いハイライト(段ごとに位相をずらす)

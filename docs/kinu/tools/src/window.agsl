@@ -39,18 +39,20 @@ half4 main(float2 p) {
     float xd = p.x / dp;                       // x を dp 単位で
 
     // ---- 琥珀の面: 上 #F1CFAF(クリーム)→ 中 #E7AD84 → 奥 #BA7D50(線形の値はトークンから) ----
-    float3 hi = toLin(amberHi);
-    float3 mid = toLin(amber);
-    float3 deep = toLin(amberDeep);
+    // 黄みのある温かいクリーム〜琥珀。内側から光る(上ほど明るい)
+    float3 hi = toLin(half4(0.9647, 0.8667, 0.7059, 1.0));    // #F6DDB4 上
+    float3 mid = toLin(half4(0.9137, 0.7098, 0.4941, 1.0));   // #E9B57E 中
+    float3 deep = toLin(half4(0.7294, 0.4902, 0.3137, 1.0));  // #BA7D50 下の奥
     float3 col = mix(hi, mid, smoothstep(0.0, 0.5, v));
     col = mix(col, deep, smoothstep(0.5, 1.0, v));
+    col *= 1.0 + 0.06 * (1.0 - v);
 
     // ---- 天井の灯り: 上 9% に点光源を横に並べる。HDR で白を少し超える ----
     float ceilY = 0.09 * size.y;
     float cellX = 22.0 * dp;
     float dx = (fract(p.x / cellX + 0.5) - 0.5) * cellX;
     float dyc = p.y - ceilY;
-    float lamp = exp(-(dx * dx + dyc * dyc) / (2.6 * dp * 2.6 * dp));
+    float lamp = exp(-(dx * dx + dyc * dyc) / (1.56 * dp * 1.56 * dp));   // 半径は 6 割
     float ceilBand = exp(-pow(dyc / (4.0 * dp), 2.0)) * 0.35;
     col += toLin(half4(1.0, 0.95, 0.80, 1.0)) * (lamp * 1.9 + ceilBand * 0.8) * (1.0 - smoothstep(0.0, 0.3, v));
 
@@ -66,7 +68,7 @@ half4 main(float2 p) {
 
     // ---- 灯りの強さ: glow 0 は落ち着いたクリームのガラス、1 は琥珀 ----
     // 入力欄の glow 0.35 は、クリームがほぼ勝つ(琥珀は薄く混ざる)
-    float3 cream = toLin(half4(0.9569, 0.8863, 0.8000, 1.0));     // #F4E2CC
+    float3 cream = toLin(half4(0.9647, 0.9020, 0.7686, 1.0));     // #F6E6C4 黄みのクリーム
     float3 rest = cream * (1.0 - 0.12 * v);
     float3 lin = mix(rest, col, clamp(glow, 0.0, 1.0));
 

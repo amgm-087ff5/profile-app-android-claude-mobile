@@ -33,7 +33,7 @@ const float PI = 3.14159265;
 // ---- 帯の領域(画面の上端・下端から各 16%) ----
 const float ZONE = 0.16;
 const float LAYERS = 4.0;        // 帯の段数(ループは 4 回)
-const float BAND_FRAC = 0.72;    // 帯の高さ / 段の間隔
+const float BAND_FRAC = 0.55;    // 帯の高さ / 段の間隔(残りが窓のすき間)
 const float FADE_IN = 10.0;      // 下の領域の上側のなじみ(dp)
 const float FADE_OUT = 14.0;     // 上の領域の下側のなじみ(dp)
 
@@ -74,13 +74,13 @@ float3 toneMapC(float3 x, float3 C) {
 float edgeAt(float k, float xd, float pitch) {
     return k * pitch
         + 5.5 * sin(2.0 * PI * xd / 360.0 + 1.1 * k + 0.4)
-        + 2.2 * sin(2.0 * PI * xd / 170.0 + 0.7 * k);
+        + 1.6 * sin(2.0 * PI * xd / 200.0 + 0.7 * k);
 }
 
 // 布の帯の面。s は上縁からの深さ(dp、0 以上)。上の縁は光の線に舐められて金、下へ向かって
 // 陰の面(トープ〜灰紫)へ落ちる。下の縁は foldGold の折り返し。つやは横に伸びる緩い波。
 float3 bandFace(float3 sh, float3 gl, float3 am, float3 fold, float s, float bh, float xd, float kf) {
-    float lit = exp(-s / 7.0);
+    float lit = exp(-s / 4.5);
     float3 litCol = mix(am * 0.9, gl, 0.45);
     float3 face = mix(sh, litCol, 0.12 + 0.88 * lit);
     // つや: 上縁の少し下に、横へ伸びる弱いハイライト(段ごとに位相をずらす)
@@ -119,7 +119,8 @@ half4 main(float2 p) {
     float bh = pitch * BAND_FRAC;    // 帯の高さ(dp)
     float wdp = size.x / dp;
 
-    float3 sh = mix(toLin(facadeShade), toLin(facadeMauve), 0.5);
+    // 陰の面の基調(平均 #75625A 前後): トープ寄りに混ぜ、青を少し抑える
+    float3 sh = mix(toLin(facadeShade), toLin(facadeMauve), 0.6) * float3(1.0, 0.99, 0.84);
     float3 gl = toLin(goldLit);
     float3 am = toLin(amber);
     float3 hi = toLin(amberHi);
@@ -243,8 +244,8 @@ half4 main(float2 p) {
     float amt = line * on * (0.92 + 0.08 * sin(PI2 * 1.5 * u + seed));
 
     // ---- 色(線形へ変換して使う) ----
-    float3 faceMid = toLin(half4(0.8510, 0.6078, 0.4549, 1.0));   // #D99B74
-    float3 faceLit = toLin(goldLit);                              // #EDBE8F(トークン)
+    float3 faceLit = toLin(goldLit);                              // #EDBE8F ピーチ(縁の近く。トークン)
+    float3 faceMauve = toLin(half4(0.4784, 0.4118, 0.4353, 1.0)); // #7A6970 灰紫(縁から離れた陰)
     float3 foldCol = toLin(half4(0.7765, 0.6549, 0.4471, 1.0));   // #C6A772 下の縁の折り返し
     float3 shade = toLin(goldShade);                              // 巻き込みの直下の細い陰だけ
     float3 gloss = toLin(half4(0.9765, 0.8863, 0.8078, 1.0));     // #F9E2CE つやと光の際
@@ -252,7 +253,9 @@ half4 main(float2 p) {
     float3 edgeCol = toLin(half4(0.8275, 0.5882, 0.4353, 1.0));   // #D3966F 光の際の暖色
 
     // ---- 面: 上は #D99B74、下へ #EDBE8F(下からの琥珀の照り返し)。中央がゆるく沈む ----
-    float3 face = mix(faceMid, faceLit, smoothstep(0.1, 0.8, v));
+    // 縁(光の線)の近くはピーチ、縁から離れるほど連続的に灰紫へ落ちる(面の大半は中間〜陰)
+    float dv = clamp(d / H, 0.0, 1.0);
+    float3 face = mix(faceLit, faceMauve, smoothstep(0.03, 0.8, dv));
     face *= 1.0 - 0.04 * sin(3.14159 * clamp((v - 0.05) / 0.9, 0.0, 1.0));
 
     // 下の縁の折り返し: 下 14% ほどが #C6A772 へ。折り返しの境に細い影
@@ -271,10 +274,10 @@ half4 main(float2 p) {
     float tg = touchOn ? exp(-pow((p.x - touch.x) / (size.x * 0.22), 2.0)) : 0.0;
     float vh = 0.46 + 0.09 * sin(PI2 * 1.0 * u + seed) + 0.03 * sin(PI2 * 2.0 * u + seed * 2.1);
     float gdy = (v - vh) * size.y;                     // px
-    float halfW = 0.045 * size.y;                      // 全幅 8%(わずかに広めに取り、縁は鋭く)
-    float streak = exp(-pow(abs(gdy) / halfW, 6.0));   // 縁が鋭く立つ(平らな頂 + 急な裾)
+    // 幅 35%(高さ比)のぼけた明るみ。線ではなく面の光沢
+    float streak = exp(-pow(gdy / (0.0875 * size.y), 2.0));
     float taper = smoothstep(0.0, 0.06, u) * smoothstep(1.0, 0.94, u);
-    base += gloss * streak * taper * (0.7 + 1.0 * tg) * 0.75;
+    base += gloss * streak * taper * (0.35 + 0.5 * tg) * 0.75;
 
     // ---- 光の線: 芯 1.2dp(半幅 0.6)・上へのにじみ 3dp・下の面を舐める 30% の高さまで ----
     float core = exp(-pow(d / 0.6, 2.0));
@@ -338,18 +341,20 @@ half4 main(float2 p) {
     float xd = p.x / dp;                       // x を dp 単位で
 
     // ---- 琥珀の面: 上 #F1CFAF(クリーム)→ 中 #E7AD84 → 奥 #BA7D50(線形の値はトークンから) ----
-    float3 hi = toLin(amberHi);
-    float3 mid = toLin(amber);
-    float3 deep = toLin(amberDeep);
+    // 黄みのある温かいクリーム〜琥珀。内側から光る(上ほど明るい)
+    float3 hi = toLin(half4(0.9647, 0.8667, 0.7059, 1.0));    // #F6DDB4 上
+    float3 mid = toLin(half4(0.9137, 0.7098, 0.4941, 1.0));   // #E9B57E 中
+    float3 deep = toLin(half4(0.7294, 0.4902, 0.3137, 1.0));  // #BA7D50 下の奥
     float3 col = mix(hi, mid, smoothstep(0.0, 0.5, v));
     col = mix(col, deep, smoothstep(0.5, 1.0, v));
+    col *= 1.0 + 0.06 * (1.0 - v);
 
     // ---- 天井の灯り: 上 9% に点光源を横に並べる。HDR で白を少し超える ----
     float ceilY = 0.09 * size.y;
     float cellX = 22.0 * dp;
     float dx = (fract(p.x / cellX + 0.5) - 0.5) * cellX;
     float dyc = p.y - ceilY;
-    float lamp = exp(-(dx * dx + dyc * dyc) / (2.6 * dp * 2.6 * dp));
+    float lamp = exp(-(dx * dx + dyc * dyc) / (1.56 * dp * 1.56 * dp));   // 半径は 6 割
     float ceilBand = exp(-pow(dyc / (4.0 * dp), 2.0)) * 0.35;
     col += toLin(half4(1.0, 0.95, 0.80, 1.0)) * (lamp * 1.9 + ceilBand * 0.8) * (1.0 - smoothstep(0.0, 0.3, v));
 
@@ -365,7 +370,7 @@ half4 main(float2 p) {
 
     // ---- 灯りの強さ: glow 0 は落ち着いたクリームのガラス、1 は琥珀 ----
     // 入力欄の glow 0.35 は、クリームがほぼ勝つ(琥珀は薄く混ざる)
-    float3 cream = toLin(half4(0.9569, 0.8863, 0.8000, 1.0));     // #F4E2CC
+    float3 cream = toLin(half4(0.9647, 0.9020, 0.7686, 1.0));     // #F6E6C4 黄みのクリーム
     float3 rest = cream * (1.0 - 0.12 * v);
     float3 lin = mix(rest, col, clamp(glow, 0.0, 1.0));
 

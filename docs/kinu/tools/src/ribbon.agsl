@@ -53,8 +53,8 @@ half4 main(float2 p) {
     float amt = line * on * (0.92 + 0.08 * sin(PI2 * 1.5 * u + seed));
 
     // ---- 色(線形へ変換して使う) ----
-    float3 faceMid = toLin(half4(0.8510, 0.6078, 0.4549, 1.0));   // #D99B74
-    float3 faceLit = toLin(goldLit);                              // #EDBE8F(トークン)
+    float3 faceLit = toLin(goldLit);                              // #EDBE8F ピーチ(縁の近く。トークン)
+    float3 faceMauve = toLin(half4(0.4784, 0.4118, 0.4353, 1.0)); // #7A6970 灰紫(縁から離れた陰)
     float3 foldCol = toLin(half4(0.7765, 0.6549, 0.4471, 1.0));   // #C6A772 下の縁の折り返し
     float3 shade = toLin(goldShade);                              // 巻き込みの直下の細い陰だけ
     float3 gloss = toLin(half4(0.9765, 0.8863, 0.8078, 1.0));     // #F9E2CE つやと光の際
@@ -62,7 +62,9 @@ half4 main(float2 p) {
     float3 edgeCol = toLin(half4(0.8275, 0.5882, 0.4353, 1.0));   // #D3966F 光の際の暖色
 
     // ---- 面: 上は #D99B74、下へ #EDBE8F(下からの琥珀の照り返し)。中央がゆるく沈む ----
-    float3 face = mix(faceMid, faceLit, smoothstep(0.1, 0.8, v));
+    // 縁(光の線)の近くはピーチ、縁から離れるほど連続的に灰紫へ落ちる(面の大半は中間〜陰)
+    float dv = clamp(d / H, 0.0, 1.0);
+    float3 face = mix(faceLit, faceMauve, smoothstep(0.03, 0.8, dv));
     face *= 1.0 - 0.04 * sin(3.14159 * clamp((v - 0.05) / 0.9, 0.0, 1.0));
 
     // 下の縁の折り返し: 下 14% ほどが #C6A772 へ。折り返しの境に細い影
@@ -81,10 +83,10 @@ half4 main(float2 p) {
     float tg = touchOn ? exp(-pow((p.x - touch.x) / (size.x * 0.22), 2.0)) : 0.0;
     float vh = 0.46 + 0.09 * sin(PI2 * 1.0 * u + seed) + 0.03 * sin(PI2 * 2.0 * u + seed * 2.1);
     float gdy = (v - vh) * size.y;                     // px
-    float halfW = 0.045 * size.y;                      // 全幅 8%(わずかに広めに取り、縁は鋭く)
-    float streak = exp(-pow(abs(gdy) / halfW, 6.0));   // 縁が鋭く立つ(平らな頂 + 急な裾)
+    // 幅 35%(高さ比)のぼけた明るみ。線ではなく面の光沢
+    float streak = exp(-pow(gdy / (0.0875 * size.y), 2.0));
     float taper = smoothstep(0.0, 0.06, u) * smoothstep(1.0, 0.94, u);
-    base += gloss * streak * taper * (0.7 + 1.0 * tg) * 0.75;
+    base += gloss * streak * taper * (0.35 + 0.5 * tg) * 0.75;
 
     // ---- 光の線: 芯 1.2dp(半幅 0.6)・上へのにじみ 3dp・下の面を舐める 30% の高さまで ----
     float core = exp(-pow(d / 0.6, 2.0));
